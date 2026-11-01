@@ -1,0 +1,109 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-dark: #080c16;
+    --card-dark: #0f172a;
+    --accent-cyan: #06b6d4;
+    --accent-teal: #14b8a6;
+    --accent-violet: #8b5cf6;
+  }
+}
+
+/* Custom dark tech grid background */
+.tech-grid-pattern {
+  background-size: 32px 32px;
+  background-image: 
+    linear-gradient(to right, rgba(6, 182, 212, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(6, 182, 212, 0.05) 1px, transparent 1px);
+}
+
+.tech-grid-pattern-dense {
+  background-size: 16px 16px;
+  background-image: 
+    linear-gradient(to right, rgba(139, 92, 246, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(139, 92, 246, 0.06) 1px, transparent 1px);
+}
+
+/* Neon glow helper classes */
+.neon-glow-cyan {
+  box-shadow: 0 0 25px -4px rgba(6, 182, 212, 0.45);
+}
+
+.neon-glow-violet {
+  box-shadow: 0 0 25px -4px rgba(139, 92, 246, 0.45);
+}
+
+.neon-border-violet {
+  border-color: rgba(139, 92, 246, 0.6);
+  box-shadow: 0 0 15px -2px rgba(139, 92, 246, 0.35);
+}
+
+/* Code scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #080c16;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+/* ID Card standard dimensions on print */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  /* Hide regular UI elements */
+  header, footer, nav, .no-print, button, input, select {
+    display: none !important;
+  }
+
+  /* Ensure printable area and its cards are clearly displayed and colored */
+  #printable-card-area {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  .print-card-box {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    box-shadow: none !important;
+  }
+
+  .only-print {
+    display: block !important;
+  }
+}
+
+.only-print {
+  display: none;
+}
+

@@ -1,0 +1,6 @@
+{
+  "name": "Lab Komputer & IT Club Portal",
+  "description": "Situs Resmi Lab Komputer dan IT Club Sekolah - Absensi RFID & QR Code, Portal Guru, Modul Pembelajaran, Jadwal, Portofolio & Kartu Anggota.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

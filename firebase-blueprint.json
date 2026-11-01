@@ -1,0 +1,119 @@
+{
+  "entities": {
+    "Student": {
+      "title": "Student",
+      "description": "Registered IT Club student member profile with RFID and QR credentials",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nisn": { "type": "string" },
+        "name": { "type": "string" },
+        "class": { "type": "string" },
+        "division": { "type": "string" },
+        "rfidUid": { "type": "string" },
+        "qrCodeData": { "type": "string" },
+        "avatarUrl": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "joinedDate": { "type": "string" },
+        "status": { "type": "string", "enum": ["Aktif", "Alumni", "Pengurus"] },
+        "position": { "type": "string" }
+      },
+      "required": ["id", "nisn", "name", "class", "division", "rfidUid", "qrCodeData", "status"]
+    },
+    "AttendanceRecord": {
+      "title": "AttendanceRecord",
+      "description": "Log entry of student lab attendance tap (Masuk or Pulang)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "class": { "type": "string" },
+        "nisn": { "type": "string" },
+        "division": { "type": "string" },
+        "method": { "type": "string", "enum": ["RFID", "QR Code", "Manual"] },
+        "status": { "type": "string", "enum": ["Hadir", "Terlambat", "Izin"] },
+        "tapType": { "type": "string", "enum": ["Masuk", "Pulang"] },
+        "sessionTitle": { "type": "string" },
+        "notes": { "type": "string" }
+      },
+      "required": ["id", "timestamp", "studentId", "studentName", "class", "nisn", "division", "method", "status", "tapType"]
+    },
+    "ScheduleItem": {
+      "title": "ScheduleItem",
+      "description": "Lab computer class and extracurricular schedule item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "day": { "type": "string" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "title": { "type": "string" },
+        "category": { "type": "string" },
+        "instructor": { "type": "string" },
+        "room": { "type": "string" },
+        "capacity": { "type": "number" },
+        "description": { "type": "string" }
+      },
+      "required": ["id", "day", "startTime", "endTime", "title", "category", "instructor", "room"]
+    },
+    "PortfolioItem": {
+      "title": "PortfolioItem",
+      "description": "Student project showcase and portfolio item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "studentName": { "type": "string" },
+        "studentClass": { "type": "string" },
+        "division": { "type": "string" },
+        "projectUrl": { "type": "string" },
+        "githubUrl": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "featured": { "type": "boolean" },
+        "tags": { "type": "array" }
+      },
+      "required": ["id", "title", "description", "studentName", "division"]
+    },
+    "LabSetting": {
+      "title": "LabSetting",
+      "description": "Lab schedule and instructor settings",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "instructorName": { "type": "string" },
+        "instructorNip": { "type": "string" },
+        "masukTime": { "type": "string" },
+        "lateThresholdTime": { "type": "string" },
+        "pulangTime": { "type": "string" }
+      },
+      "required": ["id"]
+    }
+  },
+  "firestore": {
+    "/students/{studentId}": {
+      "schema": "Student",
+      "description": "Collection of registered IT Club students"
+    },
+    "/attendance/{recordId}": {
+      "schema": "AttendanceRecord",
+      "description": "Collection of attendance check-in and check-out logs"
+    },
+    "/schedules/{scheduleId}": {
+      "schema": "ScheduleItem",
+      "description": "Collection of lab schedules and club meetings"
+    },
+    "/portfolios/{portfolioId}": {
+      "schema": "PortfolioItem",
+      "description": "Collection of student portfolio projects"
+    },
+    "/settings/{settingId}": {
+      "schema": "LabSetting",
+      "description": "Lab configuration settings"
+    }
+  }
+}
