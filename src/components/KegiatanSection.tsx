@@ -42,7 +42,7 @@ export const KegiatanSection: React.FC<KegiatanSectionProps> = ({ activities, on
             Kegiatan &amp; Workshop IT Club
           </h2>
           <p className="text-sm text-slate-400 mt-1 max-w-xl">
-            Ikuti sesi coding maraton, workshop sertifikasi jaringan, dan kompetisi internal laboratorium sekolah.
+            Ikuti sesi coding maraton, workshop pictoblox, dan kompetisi internal laboratorium sekolah.
           </p>
         </div>
 
