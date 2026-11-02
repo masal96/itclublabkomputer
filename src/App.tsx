@@ -26,6 +26,7 @@ import {
   AttendanceRecord, 
   ScheduleItem, 
   PortfolioItem, 
+  ActivityEvent,
   AdminUser 
 } from './types';
 
@@ -46,6 +47,10 @@ import {
   savePortfolioToFirestore,
   deletePortfolioFromFirestore,
   subscribeToPortfolios,
+  getOrSeedActivities,
+  saveActivityToFirestore,
+  deleteActivityFromFirestore,
+  subscribeToActivities,
 } from './services/firebase';
 
 export default function App() {
@@ -108,6 +113,15 @@ export default function App() {
     return INITIAL_PORTFOLIO;
   });
 
+  // Activities List
+  const [activityList, setActivityList] = useState<ActivityEvent[]>(() => {
+    try {
+      const saved = localStorage.getItem('itclub_activities');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return INITIAL_ACTIVITIES;
+  });
+
   // Save changes to localStorage
   useEffect(() => {
     localStorage.setItem('itclub_admin', JSON.stringify(admin));
@@ -128,6 +142,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('itclub_portfolio', JSON.stringify(portfolioList));
   }, [portfolioList]);
+
+  useEffect(() => {
+    localStorage.setItem('itclub_activities', JSON.stringify(activityList));
+  }, [activityList]);
 
   // Synchronize with Firebase Firestore Server
   useEffect(() => {
@@ -196,11 +214,27 @@ export default function App() {
       }
     });
 
+    // 6. Fetch or seed activities & subscribe in real-time
+    getOrSeedActivities().then((serverActivities) => {
+      if (serverActivities && serverActivities.length > 0) {
+        setActivityList(serverActivities);
+      }
+    }).catch((err) => {
+      console.warn('Firestore getOrSeedActivities error:', err);
+    });
+
+    const unsubActivities = subscribeToActivities((liveActivities) => {
+      if (liveActivities && liveActivities.length > 0) {
+        setActivityList(liveActivities);
+      }
+    });
+
     return () => {
       unsubStudents();
       unsubAttendance();
       unsubSchedules();
       unsubPortfolios();
+      unsubActivities();
     };
   }, []);
 
@@ -326,6 +360,36 @@ export default function App() {
     }
   };
 
+  const handleAddActivity = async (item: ActivityEvent) => {
+    setActivityList((prev) => [item, ...prev]);
+    try {
+      await saveActivityToFirestore(item);
+      console.log('Activity successfully synced to Cloud Firestore');
+    } catch (err) {
+      console.warn('Error saving activity to Firestore:', err);
+    }
+  };
+
+  const handleUpdateActivity = async (updated: ActivityEvent) => {
+    setActivityList((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+    try {
+      await saveActivityToFirestore(updated);
+      console.log('Updated activity successfully synced to Cloud Firestore');
+    } catch (err) {
+      console.warn('Error updating activity to Firestore:', err);
+    }
+  };
+
+  const handleDeleteActivity = async (id: string) => {
+    setActivityList((prev) => prev.filter((a) => a.id !== id));
+    try {
+      await deleteActivityFromFirestore(id);
+      console.log('Deleted activity from Cloud Firestore');
+    } catch (err) {
+      console.warn('Error deleting activity from Firestore:', err);
+    }
+  };
+
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode);
     if (!isDarkMode) {
@@ -389,7 +453,12 @@ export default function App() {
             {/* Quick Preview of Upcoming Activities in Home */}
             <div className="border-t border-cyan-900/20 bg-[#070b14]/70">
               <KegiatanSection
-                activities={INITIAL_ACTIVITIES}
+                admin={admin}
+                activities={activityList.slice(0, 3)}
+                onAddActivity={handleAddActivity}
+                onUpdateActivity={handleUpdateActivity}
+                onDeleteActivity={handleDeleteActivity}
+                onOpenAdminModal={() => setAdminModalOpen(true)}
                 onOpenJoinModal={() => setJoinModalOpen(true)}
               />
             </div>
@@ -399,7 +468,12 @@ export default function App() {
         {/* KEGIATAN */}
         {activeTab === 'kegiatan' && (
           <KegiatanSection
-            activities={INITIAL_ACTIVITIES}
+            admin={admin}
+            activities={activityList}
+            onAddActivity={handleAddActivity}
+            onUpdateActivity={handleUpdateActivity}
+            onDeleteActivity={handleDeleteActivity}
+            onOpenAdminModal={() => setAdminModalOpen(true)}
             onOpenJoinModal={() => setJoinModalOpen(true)}
           />
         )}

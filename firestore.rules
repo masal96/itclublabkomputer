@@ -22,6 +22,11 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // Activities & Events (Public Read, Admin Write)
+    match /activities/{activityId} {
+      allow read, write: if true;
+    }
+
     // Lab Settings & Schedules
     match /settings/{settingId} {
       allow read, write: if true;

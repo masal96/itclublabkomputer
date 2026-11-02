@@ -15,12 +15,13 @@ import {
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import config from '../../firebase-applet-config.json';
-import { Student, AttendanceRecord, ScheduleItem, PortfolioItem } from '../types';
+import { Student, AttendanceRecord, ScheduleItem, PortfolioItem, ActivityEvent } from '../types';
 import { 
   INITIAL_STUDENTS, 
   INITIAL_ATTENDANCE, 
   INITIAL_SCHEDULE, 
-  INITIAL_PORTFOLIO 
+  INITIAL_PORTFOLIO,
+  INITIAL_ACTIVITIES 
 } from '../data/initialData';
 
 // Firebase Configuration with reliable fallbacks for external deployments (Vercel, Netlify)
@@ -343,3 +344,76 @@ export function subscribeToPortfolios(callback: (portfolios: PortfolioItem[]) =>
     return () => {};
   }
 }
+
+// ==========================================
+// 5. ACTIVITIES (AGENDA KEGIATAN & WORKSHOP)
+// ==========================================
+export async function getOrSeedActivities(): Promise<ActivityEvent[]> {
+  try {
+    const actCol = collection(db, 'activities');
+    const snapshot = await getDocs(actCol);
+
+    if (!snapshot.empty) {
+      const list: ActivityEvent[] = [];
+      snapshot.forEach((d) => {
+        list.push(d.data() as ActivityEvent);
+      });
+      return list;
+    }
+
+    console.log('[Firestore] Seeding initial activities to Firestore server...');
+    const seeded: ActivityEvent[] = [];
+    for (const a of INITIAL_ACTIVITIES) {
+      await setDoc(doc(db, 'activities', a.id), a);
+      seeded.push(a);
+    }
+    return seeded;
+  } catch (err) {
+    console.warn('[Firestore] Error fetching activities, using fallback:', err);
+    return INITIAL_ACTIVITIES;
+  }
+}
+
+export async function saveActivityToFirestore(activity: ActivityEvent): Promise<void> {
+  try {
+    await setDoc(doc(db, 'activities', activity.id), activity);
+    console.log('[Firestore] Activity saved to server:', activity.id);
+  } catch (err) {
+    console.error('[Firestore] Failed to save activity:', err);
+    throw err;
+  }
+}
+
+export async function deleteActivityFromFirestore(id: string): Promise<void> {
+  try {
+    await deleteDoc(doc(db, 'activities', id));
+    console.log('[Firestore] Activity deleted from server:', id);
+  } catch (err) {
+    console.error('[Firestore] Failed to delete activity:', err);
+    throw err;
+  }
+}
+
+export function subscribeToActivities(callback: (activities: ActivityEvent[]) => void): () => void {
+  try {
+    const col = collection(db, 'activities');
+    const unsubscribe = onSnapshot(
+      col,
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const list: ActivityEvent[] = [];
+          snapshot.forEach((d) => {
+            list.push(d.data() as ActivityEvent);
+          });
+          callback(list);
+        }
+      },
+      (error) => console.warn('[Firestore] Activities subscription error:', error)
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.warn('[Firestore] Activities subscription failed:', err);
+    return () => {};
+  }
+}
+

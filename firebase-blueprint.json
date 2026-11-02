@@ -92,6 +92,25 @@
         "pulangTime": { "type": "string" }
       },
       "required": ["id"]
+    },
+    "ActivityEvent": {
+      "title": "ActivityEvent",
+      "description": "School lab workshops, internal competitions, and club activities",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "location": { "type": "string" },
+        "description": { "type": "string" },
+        "speaker": { "type": "string" },
+        "category": { "type": "string" },
+        "status": { "type": "string", "enum": ["Mendatang", "Sedang Berlangsung", "Selesai"] },
+        "registeredCount": { "type": "number" },
+        "maxParticipants": { "type": "number" }
+      },
+      "required": ["id", "title", "date", "time", "location", "description", "speaker", "category", "status", "maxParticipants"]
     }
   },
   "firestore": {
@@ -110,6 +129,10 @@
     "/portfolios/{portfolioId}": {
       "schema": "PortfolioItem",
       "description": "Collection of student portfolio projects"
+    },
+    "/activities/{activityId}": {
+      "schema": "ActivityEvent",
+      "description": "Collection of school IT Club activities, workshops and competitions"
     },
     "/settings/{settingId}": {
       "schema": "LabSetting",
