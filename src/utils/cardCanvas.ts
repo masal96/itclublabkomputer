@@ -178,7 +178,11 @@ export async function generateFrontCardImage(student: Student): Promise<string> 
 /**
  * Generates a high-resolution PNG image of the back side of the ID Card
  */
-export async function generateBackCardImage(student: Student): Promise<string> {
+export async function generateBackCardImage(
+  student: Student,
+  instructorName: string = 'Dwi Ambal Aziz, S.Kom',
+  instructorRole: string = 'Pembina Lab & IT Club'
+): Promise<string> {
   const canvas = document.createElement('canvas');
   canvas.width = 1012;
   canvas.height = 638;
@@ -239,14 +243,25 @@ export async function generateBackCardImage(student: Student): Promise<string> {
   ctx.fillStyle = '#94a3b8';
   ctx.font = '16px "Plus Jakarta Sans", sans-serif';
   ctx.fillText('Laboratorium Komputer Sekolah', 60, 520);
-  ctx.fillText('Gedung TI Lt. 2', 60, 545);
+  ctx.fillText('Terdaftar Sistem Resmi 2026', 60, 545);
 
+  const pembinaName = (instructorName && instructorName.trim()) 
+    ? instructorName.trim() 
+    : 'Dwi Ambal Aziz, S.Kom';
+  const pembinaRole = (instructorRole && instructorRole.trim())
+    ? instructorRole.trim()
+    : 'Pembina Lab & IT Club';
+
+  ctx.save();
+  ctx.textAlign = 'right';
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 18px "Plus Jakarta Sans", sans-serif';
-  ctx.fillText('Hendra Pratama, S.Kom', 720, 560);
+  ctx.font = 'bold 20px "Plus Jakarta Sans", sans-serif';
+  ctx.fillText(pembinaName, 952, 550);
+
   ctx.fillStyle = '#94a3b8';
   ctx.font = '16px "Plus Jakarta Sans", sans-serif';
-  ctx.fillText('Pembina Lab & IT Club', 720, 585);
+  ctx.fillText(pembinaRole, 952, 580);
+  ctx.restore();
 
   return canvas.toDataURL('image/png');
 }

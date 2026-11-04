@@ -186,15 +186,15 @@ export const PembelajaranSection: React.FC<PembelajaranSectionProps> = ({ module
             )}
 
             <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
-              <button
-                onClick={() => {
-                  alert('Modul PDF dan aset starter kit berhasil disiapkan untuk diunduh siswa.');
-                }}
+              <a
+                href="https://sfl.gl/eXMZXIfr"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-200 transition-colors"
               >
                 <Download className="w-4 h-4 text-cyan-400" />
-                <span><a href="https://sfl.gl/eXMZXIfr">Unduh Modul PDF</a></span>
-              </button>
+                <span>Unduh Modul PDF</span>
+              </a>
               <button
                 onClick={() => setActiveModule(null)}
                 className="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold transition-all"

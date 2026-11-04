@@ -265,15 +265,22 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
       }
 
       if (side === 'back' || side === 'both') {
-        setTimeout(async () => {
-          const backUrl = await generateBackCardImage(selectedStudent);
+        const downloadBack = async () => {
+          const instructorName = (admin.isAuthenticated && admin.name) ? admin.name : 'Dwi Ambal Aziz, S.Kom';
+          const backUrl = await generateBackCardImage(selectedStudent, instructorName, 'Pembina Lab & IT Club');
           const link = document.createElement('a');
           link.download = `Kartu_Belakang_${selectedStudent.name.replace(/\s+/g, '_')}_${selectedStudent.nisn}.png`;
           link.href = backUrl;
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
-        }, 300);
+        };
+
+        if (side === 'both') {
+          setTimeout(downloadBack, 300);
+        } else {
+          await downloadBack();
+        }
       }
 
       setDownloadSuccess(`Kartu digital ${selectedStudent.name} berhasil diunduh dalam format PNG beresolusi tinggi.`);
@@ -972,7 +979,7 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
                             <div className="font-semibold text-white">
                               {admin.isAuthenticated && admin.name ? admin.name : 'Dwi Ambal Aziz, S.Kom'}
                             </div>
-                            <div className="text-slate-400">Pembina Lab</div>
+                            <div className="text-slate-400">Pembina Lab &amp; IT Club</div>
                           </div>
                         </div>
 
