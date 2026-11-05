@@ -650,7 +650,7 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
 
                   </div>
 
-                  {/* Card Bottom: RFID Chip Representation + UID */}
+                  {/* Card Bottom: Chip Representation */}
                   <div className="flex items-center justify-between border-t border-slate-800/80 pt-2 text-[10px] font-mono">
                     <div className="flex items-center gap-2">
                       {/* Metallic smart chip icon */}
@@ -660,8 +660,7 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
                           <span className="bg-amber-400/40 rounded-[1px]" />
                         </div>
                       </div>
-                      <span className="text-slate-400">RFID:</span>
-                      <span className="text-cyan-300 font-bold tracking-wider">{selectedStudent?.rfidUid}</span>
+                      <span className="text-cyan-300 font-semibold tracking-wider text-[9px]">SMART CARD ACCESS</span>
                     </div>
 
                     <div className="text-slate-400">
@@ -704,7 +703,7 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
                       ))}
                     </div>
                     <span className="text-[8px] font-mono text-black font-bold tracking-widest mt-0.5">
-                      {selectedStudent?.rfidUid} - {selectedStudent?.nisn}
+                      *{selectedStudent?.nisn}*
                     </span>
                   </div>
 
@@ -931,7 +930,7 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
 
                         {/* Footer */}
                         <div className="flex items-center justify-between border-t border-slate-800 pt-1.5 text-[9px] font-mono">
-                          <span className="text-cyan-300 font-bold">RFID: {selectedStudent.rfidUid}</span>
+                          <span className="text-cyan-300 font-semibold tracking-wider">SMART CARD ACCESS</span>
                           <span className="text-slate-400">ID: #{selectedStudent.id.toUpperCase()}</span>
                         </div>
 
@@ -969,7 +968,7 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
                             ))}
                           </div>
                           <span className="text-[7px] font-mono text-black font-bold tracking-widest">
-                            {selectedStudent.rfidUid} - {selectedStudent.nisn}
+                            *{selectedStudent.nisn}*
                           </span>
                         </div>
 
@@ -1013,7 +1012,7 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
                           <div className="text-xs font-bold text-white truncate">{std.name}</div>
                           <div className="text-[10px] font-mono text-slate-300">NISN: {std.nisn}</div>
                           <div className="text-[10px] text-cyan-300">{std.class} · {std.division}</div>
-                          <div className="text-[9px] font-mono text-teal-400 pt-1">RFID: {std.rfidUid}</div>
+                          <div className="text-[9px] font-mono text-teal-400 pt-1">ID: #{std.id.toUpperCase()}</div>
                         </div>
                       </div>
                     ))}

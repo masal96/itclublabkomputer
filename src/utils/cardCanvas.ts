@@ -128,8 +128,8 @@ export async function generateFrontCardImage(student: Student): Promise<string> 
   ctx.fillRect(60, 452, 60, 36);
 
   ctx.fillStyle = '#38bdf8';
-  ctx.font = 'bold 22px "JetBrains Mono", monospace';
-  ctx.fillText(`RFID: ${student.rfidUid}`, 145, 478);
+  ctx.font = 'bold 18px "JetBrains Mono", monospace';
+  ctx.fillText('SMART CARD LAB ACCESS', 145, 478);
 
   // Generate QR Code on right side
   try {
@@ -235,9 +235,12 @@ export async function generateBackCardImage(
     barX += width + 5;
   }
 
+  ctx.save();
   ctx.fillStyle = '#000000';
+  ctx.textAlign = 'center';
   ctx.font = 'bold 18px "JetBrains Mono", monospace';
-  ctx.fillText(`*${student.rfidUid}-${student.nisn}*`, 340, 450);
+  ctx.fillText(`*${student.nisn}*`, canvas.width / 2, 450);
+  ctx.restore();
 
   // Signatures
   ctx.fillStyle = '#94a3b8';
