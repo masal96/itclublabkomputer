@@ -685,7 +685,8 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
                       <li>Wajib melakukan tap kartu RFID / scan QR Code saat masuk dan keluar lab.</li>
                       <li>Dilarang keras membawa makanan, minuman, dan merubah kabel instalasi.</li>
                       <li>Gunakan workstation PC sesuai dengan penugasan instruktur guru.</li>
-                      <li>Simpan file proyek di cloud/GitHub IT Club; dilarang memasang software bajakan.</li>
+                      <li>Simpan file proyek di cloud/GitHub IT Club.</li>
+                      <li>Menjaga kebersihan meja, merapikan keyboard, mouse serta kursi sebelum keluar</li>
                     </ol>
                   </div>
 
@@ -910,10 +911,10 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
                               {selectedStudent.name}
                             </h3>
                             <div className="text-[10px] font-mono text-slate-300">
-                              NISN: {selectedStudent.nisn}
+                              NISN  : {selectedStudent.nisn}
                             </div>
                             <div className="text-[10px] text-slate-300">
-                              Kelas: {selectedStudent.class}
+                              Kelas : {selectedStudent.class}
                             </div>
                             <div className="text-[9px] text-cyan-300 font-semibold pt-0.5">
                               Divisi: {selectedStudent.division}
@@ -949,10 +950,11 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
                             TATA TERTIB LAB KOMPUTER
                           </div>
                           <ol className="text-[8px] text-slate-300 space-y-1 list-decimal pl-3.5">
-                            <li>Wajib tap RFID / scan QR Code saat masuk dan keluar.</li>
-                            <li>Dilarang membawa makanan &amp; minuman ke dalam lab.</li>
-                            <li>Menjaga kebersihan meja dan merapikan workstation.</li>
-                            <li>Dilarang merubah konfigurasi sistem tanpa izin guru.</li>
+                            <li>Wajib melakukan tap kartu RFID / scan QR Code saat masuk dan keluar lab.</li>
+                            <li>Dilarang keras membawa makanan, minuman, dan merubah kabel instalasi.</li>
+                            <li>Gunakan workstation PC sesuai dengan penugasan instruktur guru.</li>
+                            <li>Simpan file proyek di cloud/GitHub IT Club.</li>
+                            <li>Menjaga kebersihan meja, merapikan keyboard, mouse serta kursi sebelum keluar</li>
                           </ol>
                         </div>
 
