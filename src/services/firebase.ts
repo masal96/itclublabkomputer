@@ -89,12 +89,39 @@ export async function getOrSeedStudents(): Promise<Student[]> {
   }
 }
 
+/**
+ * Sanitizes any data payload for Cloud Firestore by removing `undefined` properties
+ * and ensuring values conform to Firestore supported types.
+ */
+export function sanitizeForFirestore<T extends Record<string, any>>(obj: T): Record<string, any> {
+  if (obj === null || obj === undefined) return {};
+  const cleaned: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value === undefined) {
+      continue;
+    }
+    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+      cleaned[key] = sanitizeForFirestore(value);
+    } else {
+      cleaned[key] = value;
+    }
+  }
+  return cleaned;
+}
+
 export async function saveStudentToFirestore(student: Student): Promise<void> {
   try {
-    await setDoc(doc(db, 'students', student.id), student);
-    console.log('[Firestore] Student saved to server:', student.id);
+    const payload = sanitizeForFirestore({
+      ...student,
+      rfidUid: student.rfidUid ? student.rfidUid.trim() : '',
+      parentName: student.parentName ? student.parentName.trim() : '',
+      parentPhone: student.parentPhone ? student.parentPhone.trim() : '',
+      position: student.position ? student.position.trim() : '',
+    });
+    await setDoc(doc(db, 'students', student.id), payload, { merge: true });
+    console.log('[Firestore] Student saved successfully to server:', student.id, payload);
   } catch (err) {
-    console.error('[Firestore] Failed to save student:', err);
+    console.error('[Firestore] Failed to save student to server:', err);
     throw err;
   }
 }
@@ -165,7 +192,7 @@ export async function getOrSeedAttendance(): Promise<AttendanceRecord[]> {
 export async function addAttendanceRecord(record: AttendanceRecord): Promise<void> {
   try {
     const recordDoc = doc(db, 'attendance', record.id);
-    await setDoc(recordDoc, record);
+    await setDoc(recordDoc, sanitizeForFirestore(record));
     console.log('[Firestore] Successfully saved record to server:', record.id);
   } catch (err) {
     console.error('[Firestore] Failed to save attendance record:', err);
@@ -232,7 +259,7 @@ export async function getOrSeedSchedules(): Promise<ScheduleItem[]> {
 
 export async function saveScheduleToFirestore(schedule: ScheduleItem): Promise<void> {
   try {
-    await setDoc(doc(db, 'schedules', schedule.id), schedule);
+    await setDoc(doc(db, 'schedules', schedule.id), sanitizeForFirestore(schedule), { merge: true });
     console.log('[Firestore] Schedule saved to server:', schedule.id);
   } catch (err) {
     console.error('[Firestore] Failed to save schedule:', err);
@@ -304,7 +331,7 @@ export async function getOrSeedPortfolios(): Promise<PortfolioItem[]> {
 
 export async function savePortfolioToFirestore(portfolio: PortfolioItem): Promise<void> {
   try {
-    await setDoc(doc(db, 'portfolios', portfolio.id), portfolio);
+    await setDoc(doc(db, 'portfolios', portfolio.id), sanitizeForFirestore(portfolio), { merge: true });
     console.log('[Firestore] Portfolio saved to server:', portfolio.id);
   } catch (err) {
     console.error('[Firestore] Failed to save portfolio:', err);
@@ -376,7 +403,7 @@ export async function getOrSeedActivities(): Promise<ActivityEvent[]> {
 
 export async function saveActivityToFirestore(activity: ActivityEvent): Promise<void> {
   try {
-    await setDoc(doc(db, 'activities', activity.id), activity);
+    await setDoc(doc(db, 'activities', activity.id), sanitizeForFirestore(activity), { merge: true });
     console.log('[Firestore] Activity saved to server:', activity.id);
   } catch (err) {
     console.error('[Firestore] Failed to save activity:', err);

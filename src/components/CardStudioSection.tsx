@@ -66,6 +66,9 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
   const [newNisn, setNewNisn] = useState('');
   const [newClass, setNewClass] = useState('X RPL 1');
   const [newDivision, setNewDivision] = useState<DivisionType>('Python Programming');
+  const [newRfidUid, setNewRfidUid] = useState('');
+  const [newParentName, setNewParentName] = useState('');
+  const [newParentPhone, setNewParentPhone] = useState('');
   const [newAvatarUrl, setNewAvatarUrl] = useState<string>(
     'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=300&auto=format&fit=crop&q=80'
   );
@@ -83,6 +86,8 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
   const [editRfidUid, setEditRfidUid] = useState('');
   const [editStatus, setEditStatus] = useState<'Aktif' | 'Alumni' | 'Pengurus'>('Aktif');
   const [editPosition, setEditPosition] = useState('');
+  const [editParentName, setEditParentName] = useState('');
+  const [editParentPhone, setEditParentPhone] = useState('');
   const [editAvatarUrl, setEditAvatarUrl] = useState('');
   const [editAvatarTab, setEditAvatarTab] = useState<'upload' | 'presets' | 'url'>('upload');
   const [editCustomUrlInput, setEditCustomUrlInput] = useState('');
@@ -149,6 +154,8 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
     setEditRfidUid(student.rfidUid);
     setEditStatus(student.status || 'Aktif');
     setEditPosition(student.position || '');
+    setEditParentName(student.parentName || '');
+    setEditParentPhone(student.parentPhone || '');
     setEditAvatarUrl(student.avatarUrl);
     setEditAvatarTab('upload');
     setEditCustomUrlInput('');
@@ -174,6 +181,8 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
       avatarUrl: editAvatarUrl || existingStudent.avatarUrl,
       status: editStatus,
       position: editPosition.trim() || undefined,
+      parentName: editParentName.trim() || undefined,
+      parentPhone: editParentPhone.trim() || undefined,
     };
 
     onUpdateStudent?.(updated);
@@ -299,15 +308,17 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
     const randomUid = `${Math.floor(1000 + Math.random() * 9000).toString(16).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}-${(students.length + 1).toString().padStart(2, '0')}`;
     const newStudent: Student = {
       id: `std-${Date.now()}`,
-      nisn: newNisn,
-      name: newName,
-      class: newClass,
+      nisn: newNisn.trim(),
+      name: newName.trim(),
+      class: newClass.trim(),
       division: newDivision,
-      rfidUid: randomUid,
-      qrCodeData: `ITCLUB:${newNisn}:${newName}:${newClass}`,
-      avatarUrl: `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80`,
+      rfidUid: newRfidUid.trim() || randomUid,
+      qrCodeData: `ITCLUB:${newNisn.trim()}:${newName.trim()}:${newClass.trim()}`,
+      avatarUrl: newAvatarUrl || `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80`,
       email: `${newName.toLowerCase().replace(/\s+/g, '.')}@student.sch.id`,
       phone: '0812-3456-7890',
+      parentName: newParentName.trim() || undefined,
+      parentPhone: newParentPhone.trim() || undefined,
       joinedDate: new Date().toISOString().split('T')[0],
       status: 'Aktif',
     };
@@ -317,6 +328,9 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
     setShowNewCardModal(false);
     setNewName('');
     setNewNisn('');
+    setNewRfidUid('');
+    setNewParentName('');
+    setNewParentPhone('');
   };
 
   return (
@@ -1225,6 +1239,64 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
                 </select>
               </div>
 
+              {/* UID Kartu RFID */}
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1 flex items-center justify-between">
+                  <span>UID Kartu RFID</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newUid = `${Math.floor(1000 + Math.random() * 9000).toString(16).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(10 + Math.random() * 89)}`;
+                      setNewRfidUid(newUid);
+                    }}
+                    className="text-[10px] text-cyan-400 hover:text-cyan-300 underline font-mono"
+                  >
+                    Acak UID
+                  </button>
+                </label>
+                <input
+                  type="text"
+                  value={newRfidUid}
+                  onChange={(e) => setNewRfidUid(e.target.value)}
+                  placeholder="Ketik UID kartu atau tempelkan kartu RFID (cth: A4B2-7819-21)"
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm font-mono text-cyan-300 focus:outline-none focus:border-cyan-400"
+                />
+              </div>
+
+              {/* Data Wali Murid untuk Notifikasi WhatsApp */}
+              <div className="p-3.5 rounded-xl bg-emerald-950/20 border border-emerald-500/30 space-y-3">
+                <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                  Kontak Wali Murid (Notifikasi WhatsApp Otomatis)
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-300 mb-1">
+                      Nama Orang Tua / Wali
+                    </label>
+                    <input
+                      type="text"
+                      value={newParentName}
+                      onChange={(e) => setNewParentName(e.target.value)}
+                      placeholder="cth: Bpk. Bambang"
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-750 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-300 mb-1">
+                      No. WhatsApp Wali Murid
+                    </label>
+                    <input
+                      type="text"
+                      value={newParentPhone}
+                      onChange={(e) => setNewParentPhone(e.target.value)}
+                      placeholder="cth: 081234567890"
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-750 rounded-xl text-xs font-mono text-emerald-300 focus:outline-none focus:border-emerald-400"
+                    />
+                  </div>
+                </div>
+              </div>
+
               <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-800">
                 <button
                   type="button"
@@ -1505,8 +1577,43 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
                     value={editRfidUid}
                     onChange={(e) => setEditRfidUid(e.target.value)}
                     required
+                    placeholder="Tempelkan kartu RFID atau ketik manual UID"
                     className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm font-mono text-cyan-300 focus:outline-none focus:border-cyan-400"
                   />
+                </div>
+              </div>
+
+              {/* Data Wali Murid untuk Notifikasi WhatsApp */}
+              <div className="p-3.5 rounded-xl bg-emerald-950/20 border border-emerald-500/30 space-y-3">
+                <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                  Kontak Wali Murid (Notifikasi WhatsApp Otomatis)
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-300 mb-1">
+                      Nama Orang Tua / Wali
+                    </label>
+                    <input
+                      type="text"
+                      value={editParentName}
+                      onChange={(e) => setEditParentName(e.target.value)}
+                      placeholder="cth: Bpk. Bambang"
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-750 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-300 mb-1">
+                      No. WhatsApp Wali Murid
+                    </label>
+                    <input
+                      type="text"
+                      value={editParentPhone}
+                      onChange={(e) => setEditParentPhone(e.target.value)}
+                      placeholder="cth: 081234567890"
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-750 rounded-xl text-xs font-mono text-emerald-300 focus:outline-none focus:border-emerald-400"
+                    />
+                  </div>
                 </div>
               </div>
 

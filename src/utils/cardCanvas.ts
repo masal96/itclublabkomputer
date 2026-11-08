@@ -400,18 +400,19 @@ export async function generateBackCardImage(
   ctx.stroke();
 
   // ==========================================
-  // 5. RULES LIST (EXACT 4 POINTS FROM PREVIEW)
+  // 5. RULES LIST (5 POINTS FROM PREVIEW)
   // ==========================================
   const rules = [
     'Wajib melakukan tap kartu RFID / scan QR Code saat masuk dan keluar lab.',
     'Dilarang keras membawa makanan, minuman, dan merubah kabel instalasi.',
     'Gunakan workstation PC sesuai dengan penugasan instruktur guru.',
-    'Simpan file proyek di cloud/GitHub IT Club; dilarang memasang software bajakan.',
+    'Simpan file proyek di cloud/GitHub IT Club.',
+    'Menjaga kebersihan meja, merapikan keyboard, mouse serta kursi sebelum keluar.',
   ];
 
-  ctx.font = '18px "Plus Jakarta Sans", system-ui, -apple-system, sans-serif';
-  const startRuleY = 120;
-  const lineSpacing = 44;
+  ctx.font = '16.5px "Plus Jakarta Sans", system-ui, -apple-system, sans-serif';
+  const startRuleY = 114;
+  const lineSpacing = 36;
 
   rules.forEach((rule, idx) => {
     const currentY = startRuleY + idx * lineSpacing;
@@ -419,12 +420,12 @@ export async function generateBackCardImage(
     // Number bullet
     ctx.textAlign = 'left';
     ctx.fillStyle = '#22d3ee';
-    ctx.font = 'bold 18px "JetBrains Mono", monospace';
+    ctx.font = 'bold 16.5px "JetBrains Mono", monospace';
     ctx.fillText(`${idx + 1}.`, 48, currentY);
 
     // Rule Text
     ctx.fillStyle = '#cbd5e1';
-    ctx.font = '18px "Plus Jakarta Sans", system-ui, -apple-system, sans-serif';
+    ctx.font = '16.5px "Plus Jakarta Sans", system-ui, -apple-system, sans-serif';
     ctx.fillText(rule, 78, currentY);
   });
 
