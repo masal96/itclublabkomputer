@@ -22,10 +22,33 @@ import {
   Filter,
   Check,
   RefreshCw,
-  Info
+  Info,
+  MessageSquare,
+  Send,
+  Copy,
+  CheckCheck,
+  Smartphone,
+  ExternalLink,
+  X,
+  Settings,
+  Zap,
+  Key,
+  Globe,
+  HelpCircle
 } from 'lucide-react';
 import { Student, AttendanceRecord, AdminUser } from '../types';
 import { soundEffects } from '../utils/audio';
+import { 
+  generateAttendanceWhatsAppMessage, 
+  getWhatsAppDirectUrl, 
+  formatWhatsAppNumber, 
+  openWhatsAppNotification,
+  WhatsAppGatewayConfig,
+  getWhatsAppConfig,
+  saveWhatsAppConfig,
+  sendAutomatedWhatsAppNotification,
+  testWhatsAppGateway
+} from '../utils/whatsapp';
 
 interface AbsensiSectionProps {
   admin: AdminUser;
@@ -63,6 +86,107 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
   } | null>(null);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  // WhatsApp Automated Notification State
+  const [waConfig, setWaConfig] = useState<WhatsAppGatewayConfig>(() => getWhatsAppConfig());
+  const [showWaSettingsModal, setShowWaSettingsModal] = useState(false);
+  const [modalConfig, setModalConfig] = useState<WhatsAppGatewayConfig>(() => getWhatsAppConfig());
+  const [testPhoneInput, setTestPhoneInput] = useState('081234567890');
+  const [isTestingGateway, setIsTestingGateway] = useState(false);
+  const [testGatewayResult, setTestGatewayResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const [waSentMap, setWaSentMap] = useState<Record<string, boolean>>({});
+  const [copiedWaId, setCopiedWaId] = useState<string | null>(null);
+  const [selectedWaModal, setSelectedWaModal] = useState<{
+    student: Student;
+    record: AttendanceRecord;
+    message: string;
+    phone: string;
+  } | null>(null);
+  const [waToast, setWaToast] = useState<{ text: string; actionUrl?: string; actionLabel?: string } | null>(null);
+
+  const toggleAutoOpenWa = () => {
+    const nextVal = !waConfig.enabled;
+    const updated: WhatsAppGatewayConfig = { ...waConfig, enabled: nextVal };
+    setWaConfig(updated);
+    saveWhatsAppConfig(updated);
+    showWaToast({
+      text: `Notifikasi WA otomatis ke wali: ${nextVal ? 'AKTIF (Otomatis Kirim)' : 'NONAKTIF'}`,
+    });
+  };
+
+  const showWaToast = (toast: { text: string; actionUrl?: string; actionLabel?: string } | string) => {
+    if (typeof toast === 'string') {
+      setWaToast({ text: toast });
+    } else {
+      setWaToast(toast);
+    }
+    setTimeout(() => setWaToast(null), 5000);
+  };
+
+  const handleSendWhatsApp = async (student: Student, record: AttendanceRecord) => {
+    const targetPhone = student.parentPhone || student.phone;
+    if (!targetPhone) {
+      showWaToast({ text: `Nomor WA wali murid ${student.name} belum terdaftar.` });
+      return;
+    }
+    const result = await sendAutomatedWhatsAppNotification(student, record, waConfig);
+    if (result.success) {
+      setWaSentMap((prev) => ({ ...prev, [record.id]: true }));
+      showWaToast({ text: result.message });
+    } else {
+      showWaToast({
+        text: result.message,
+        actionUrl: result.url,
+        actionLabel: 'Buka WhatsApp',
+      });
+    }
+  };
+
+  const handleCopyWaMessage = (student: Student, record: AttendanceRecord) => {
+    const text = generateAttendanceWhatsAppMessage(student, record);
+    navigator.clipboard?.writeText(text);
+    setCopiedWaId(record.id);
+    showWaToast({ text: `Pesan notifikasi WA untuk wali ${student.name} berhasil disalin ke clipboard!` });
+    setTimeout(() => setCopiedWaId(null), 3000);
+  };
+
+  const handleOpenWaModal = (student: Student, record: AttendanceRecord) => {
+    const phone = student.parentPhone || student.phone || '';
+    const message = generateAttendanceWhatsAppMessage(student, record);
+    setSelectedWaModal({ student, record, message, phone });
+  };
+
+  const handleOpenSettingsModal = () => {
+    setModalConfig({ ...waConfig });
+    setTestGatewayResult(null);
+    setShowWaSettingsModal(true);
+  };
+
+  const handleSaveSettings = (e: React.FormEvent) => {
+    e.preventDefault();
+    setWaConfig(modalConfig);
+    saveWhatsAppConfig(modalConfig);
+    setShowWaSettingsModal(false);
+    showWaToast({ text: 'Pengaturan notifikasi WhatsApp otomatis berhasil disimpan!' });
+  };
+
+  const handleRunTestGateway = async () => {
+    if (!testPhoneInput.trim()) {
+      setTestGatewayResult({ success: false, message: 'Harap masukkan nomor WhatsApp tujuan uji coba.' });
+      return;
+    }
+    setIsTestingGateway(true);
+    setTestGatewayResult(null);
+    try {
+      const res = await testWhatsAppGateway(testPhoneInput, modalConfig);
+      setTestGatewayResult(res);
+    } catch (err: any) {
+      setTestGatewayResult({ success: false, message: `Kesalahan: ${err.message || 'Gagal mengirim pesan'}` });
+    } finally {
+      setIsTestingGateway(false);
+    }
+  };
 
   // Helper to obtain the effective date/time (real-time or simulated)
   const getEffectiveDate = (): Date => {
@@ -258,10 +382,28 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
         tapType: tapType,
         sessionTitle: 'Sesi Praktikum Lab & IT Club',
         notes: notes,
+        parentPhone: student.parentPhone || student.phone,
+        waSent: false,
       };
 
       onAddAttendance(newRecord);
       setLastScannedStudent({ student, record: newRecord });
+
+      // Otomatis kirim notifikasi WhatsApp ke wali murid jika mode auto aktif
+      if (waConfig.enabled && (student.parentPhone || student.phone)) {
+        sendAutomatedWhatsAppNotification(student, newRecord, waConfig).then((res) => {
+          if (res.success) {
+            setWaSentMap((prev) => ({ ...prev, [newRecord.id]: true }));
+            showWaToast({ text: res.message });
+          } else {
+            showWaToast({
+              text: res.message,
+              actionUrl: res.url,
+              actionLabel: 'Buka WhatsApp',
+            });
+          }
+        });
+      }
 
       if (tapType === 'Masuk') {
         soundEffects.playTapMasuk();
@@ -315,10 +457,28 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
         tapType: tapType,
         sessionTitle: 'Sesi Praktikum Lab & IT Club',
         notes: notes,
+        parentPhone: student.parentPhone || student.phone,
+        waSent: false,
       };
 
       onAddAttendance(newRecord);
       setLastScannedStudent({ student, record: newRecord });
+
+      // Otomatis kirim notifikasi WhatsApp ke wali murid jika mode auto aktif
+      if (waConfig.enabled && (student.parentPhone || student.phone)) {
+        sendAutomatedWhatsAppNotification(student, newRecord, waConfig).then((res) => {
+          if (res.success) {
+            setWaSentMap((prev) => ({ ...prev, [newRecord.id]: true }));
+            showWaToast({ text: res.message });
+          } else {
+            showWaToast({
+              text: res.message,
+              actionUrl: res.url,
+              actionLabel: 'Buka WhatsApp',
+            });
+          }
+        });
+      }
 
       if (tapType === 'Masuk') {
         soundEffects.playTapMasuk();
@@ -346,7 +506,7 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
 
   // Export Attendance to CSV
   const handleExportCsv = () => {
-    const headers = ['ID', 'Waktu', 'Tipe', 'Nama Siswa', 'NISN', 'Kelas', 'Divisi', 'Metode', 'Status', 'Catatan'];
+    const headers = ['ID', 'Waktu', 'Tipe', 'Nama Siswa', 'NISN', 'Kelas', 'Divisi', 'Metode', 'Status', 'No. WA Wali', 'Notifikasi WA', 'Catatan'];
     const rows = attendanceRecords.map((r) => [
       r.id,
       new Date(r.timestamp).toLocaleString('id-ID'),
@@ -357,6 +517,8 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
       `"${r.division}"`,
       r.method,
       r.status,
+      `"${r.parentPhone || '-'}"`,
+      waSentMap[r.id] || r.waSent ? 'Terkirim / Dibuka' : 'Belum Terkirim',
       `"${r.notes || ''}"`,
     ]);
 
@@ -459,7 +621,40 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          {/* WA Notification Auto Toggle */}
+          <button
+            type="button"
+            onClick={toggleAutoOpenWa}
+            className={`flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-xl border transition-all shadow-sm ${
+              waConfig.enabled
+                ? 'bg-emerald-950/80 border-emerald-500 text-emerald-200 shadow-emerald-950/50'
+                : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'
+            }`}
+            title="Klik untuk mengaktifkan / menonaktifkan notifikasi WA otomatis saat tap kartu"
+          >
+            <MessageSquare className={`w-4 h-4 ${waConfig.enabled ? 'text-emerald-400' : 'text-slate-400'}`} />
+            <span>
+              Auto WA Wali: <strong className={waConfig.enabled ? 'text-emerald-300' : 'text-slate-400'}>{waConfig.enabled ? 'AKTIF' : 'NONAKTIF'}</strong>
+            </span>
+            {waConfig.enabled && waConfig.mode === 'gateway' && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-300 font-mono border border-emerald-500/30">
+                {waConfig.provider === 'fonnte' ? 'Fonnte' : waConfig.provider === 'custom' ? 'Webhook' : 'Simulasi'}
+              </span>
+            )}
+          </button>
+
+          {/* WA Gateway Settings Button */}
+          <button
+            type="button"
+            onClick={handleOpenSettingsModal}
+            className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-emerald-300 transition-all shadow-sm"
+            title="Pengaturan Gateway & Notifikasi Otomatis WhatsApp"
+          >
+            <Settings className="w-4 h-4 text-emerald-400" />
+            <span>Pengaturan WA</span>
+          </button>
+
           <button
             onClick={handleExportCsv}
             className="flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl bg-slate-900 hover:bg-slate-800 border border-cyan-500/30 text-cyan-300 transition-all shadow-sm"
@@ -1042,6 +1237,78 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
                   </p>
                 </div>
               </div>
+
+              {/* WhatsApp Parent Notification Box */}
+              <div className="mt-4 pt-3.5 border-t border-slate-800/80">
+                <div className="bg-emerald-950/40 border border-emerald-500/40 p-3.5 rounded-xl">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0 mt-0.5">
+                        <MessageSquare className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-xs font-bold text-emerald-300">
+                            Notifikasi WA Wali Murid
+                          </span>
+                          {waSentMap[lastScannedStudent.record.id] ? (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                              <CheckCheck className="w-3 h-3 text-emerald-400" /> Terkirim / Disiapkan
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                              Siap Dikirim
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-300 mt-0.5 truncate">
+                          Wali: <strong className="text-white">{lastScannedStudent.student.parentName || 'Orang Tua / Wali'}</strong> · WA: <span className="font-mono text-emerald-400">{lastScannedStudent.student.parentPhone || lastScannedStudent.student.phone || '0812-3456-7890'}</span>
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => handleCopyWaMessage(lastScannedStudent.student, lastScannedStudent.record)}
+                        className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[11px] font-semibold text-slate-300 hover:text-white transition-colors flex items-center gap-1"
+                        title="Salin Teks Pesan WhatsApp"
+                      >
+                        {copiedWaId === lastScannedStudent.record.id ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Tersalin</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5 text-slate-400" />
+                            <span>Salin</span>
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleOpenWaModal(lastScannedStudent.student, lastScannedStudent.record)}
+                        className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-cyan-500/40 text-[11px] font-semibold text-cyan-300 hover:text-white transition-colors flex items-center gap-1"
+                        title="Pratinjau & Edit Pesan WA"
+                      >
+                        <Info className="w-3.5 h-3.5" />
+                        <span>Pratinjau</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleSendWhatsApp(lastScannedStudent.student, lastScannedStudent.record)}
+                        className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold transition-all shadow-md shadow-emerald-950/40 flex items-center gap-1.5"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        <span>Kirim WA</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
@@ -1158,12 +1425,13 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
                     <th className="px-4 py-3">Kelas &amp; Divisi</th>
                     <th className="px-4 py-3">Metode</th>
                     <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3 text-right">Notifikasi WA</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 font-sans">
                   {filteredRecords.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                      <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
                         Belum ada data presensi yang cocok dengan kriteria pencarian.
                       </td>
                     </tr>
@@ -1226,6 +1494,49 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
                             {item.status}
                           </span>
                         </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-right">
+                          {(() => {
+                            const student = students.find((s) => s.id === item.studentId || s.nisn === item.nisn);
+                            const isSent = waSentMap[item.id] || item.waSent;
+                            return (
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (student) {
+                                      handleOpenWaModal(student, item);
+                                    } else {
+                                      showWaToast('Data profil siswa tidak ditemukan.');
+                                    }
+                                  }}
+                                  className="p-1 rounded-md text-slate-400 hover:text-cyan-300 hover:bg-slate-800 transition-colors"
+                                  title="Pratinjau Pesan WA"
+                                >
+                                  <Info className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (student) {
+                                      handleSendWhatsApp(student, item);
+                                    } else {
+                                      showWaToast('Data profil siswa tidak ditemukan.');
+                                    }
+                                  }}
+                                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all border ${
+                                    isSent
+                                      ? 'bg-emerald-950/90 text-emerald-300 border-emerald-500/50'
+                                      : 'bg-emerald-600 hover:bg-emerald-500 text-white border-transparent shadow-sm shadow-emerald-950/40'
+                                  }`}
+                                  title="Kirim Pesan WhatsApp ke Wali Murid"
+                                >
+                                  {isSent ? <CheckCheck className="w-3 h-3 text-emerald-400" /> : <MessageSquare className="w-3 h-3" />}
+                                  <span>{isSent ? 'Terkirim' : 'Kirim WA'}</span>
+                                </button>
+                              </div>
+                            );
+                          })()}
+                        </td>
                       </tr>
                     ))
                   )}
@@ -1247,6 +1558,378 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
         </div>
 
       </div>
+
+      {/* MODAL: PRATINJAU & KIRIM NOTIFIKASI WA WALI MURID */}
+      {selectedWaModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
+          <div className="relative w-full max-w-lg rounded-2xl bg-[#0b1120] border border-emerald-500/40 p-6 shadow-2xl">
+            
+            <div className="flex items-start justify-between pb-3 border-b border-slate-800 mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+                  <MessageSquare className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">
+                    Notifikasi WhatsApp Wali Murid
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Kirim laporan presensi siswa langsung ke kontak WhatsApp orang tua
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedWaModal(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              {/* Recipient details */}
+              <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400">Nama Siswa:</span>
+                  <span className="font-bold text-white">{selectedWaModal.student.name} ({selectedWaModal.student.class.split(' ')[0]})</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400">Nama Wali Murid:</span>
+                  <span className="font-semibold text-emerald-300">{selectedWaModal.student.parentName || 'Orang Tua / Wali Murid'}</span>
+                </div>
+                <div className="pt-2 border-t border-slate-800/80">
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                    Nomor WhatsApp Wali Penerima:
+                  </label>
+                  <input
+                    type="tel"
+                    value={selectedWaModal.phone}
+                    onChange={(e) => setSelectedWaModal({ ...selectedWaModal, phone: e.target.value })}
+                    placeholder="Contoh: 081234567890"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono focus:outline-none focus:border-emerald-400"
+                  />
+                </div>
+              </div>
+
+              {/* Chat preview */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[11px] font-semibold text-slate-300">Pratinjau Pesan Resmi:</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(selectedWaModal.message);
+                      showWaToast('Teks pesan WhatsApp berhasil disalin!');
+                    }}
+                    className="text-cyan-400 hover:underline flex items-center gap-1 font-mono text-[11px]"
+                  >
+                    <Copy className="w-3 h-3" /> Salin Pesan
+                  </button>
+                </div>
+                <div className="p-3.5 bg-[#061117] border border-emerald-900/40 rounded-xl max-h-56 overflow-y-auto font-mono text-[11px] text-slate-200 whitespace-pre-wrap leading-relaxed shadow-inner">
+                  {selectedWaModal.message}
+                </div>
+              </div>
+
+              {/* Action buttons */}
+              <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setSelectedWaModal(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const cleanPhone = formatWhatsAppNumber(selectedWaModal.phone);
+                    const url = getWhatsAppDirectUrl(cleanPhone, selectedWaModal.message);
+                    window.open(url, '_blank', 'noopener,noreferrer');
+                    setWaSentMap((prev) => ({ ...prev, [selectedWaModal.record.id]: true }));
+                    showWaToast(`Membuka WhatsApp ke nomor ${cleanPhone}...`);
+                    setSelectedWaModal(null);
+                  }}
+                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold flex items-center gap-2 shadow-lg shadow-emerald-950/40 transition-all"
+                >
+                  <Send className="w-4 h-4" />
+                  <span>Kirim Sekarang ke WhatsApp</span>
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* MODAL: PENGATURAN NOTIFIKASI WHATSAPP OTOMATIS */}
+      {/* ============================================================== */}
+      {showWaSettingsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md overflow-y-auto animate-fadeIn">
+          <div className="relative w-full max-w-xl bg-[#0b1120] border border-emerald-500/50 rounded-3xl p-6 sm:p-7 shadow-2xl shadow-emerald-950/60 my-8">
+            
+            {/* Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-950 border border-emerald-500/50 flex items-center justify-center text-emerald-400">
+                  <Settings className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                    Pengaturan Notifikasi WhatsApp Otomatis
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Kirim notifikasi otomatis ke wali murid setiap kali siswa tap kartu RFID / scan QR
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowWaSettingsModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveSettings} className="space-y-5 text-xs">
+              
+              {/* Toggle Master Auto Send */}
+              <div className="p-4 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 flex items-center justify-between gap-4">
+                <div>
+                  <div className="font-bold text-white text-sm flex items-center gap-2">
+                    <Zap className="w-4 h-4 text-emerald-400" />
+                    <span>Kirim Otomatis saat Tap Kartu</span>
+                  </div>
+                  <p className="text-slate-400 text-[11px] mt-0.5">
+                    Notifikasi presensi ke wali murid langsung diproses otomatis saat kartu RFID atau QR terdeteksi.
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={modalConfig.enabled}
+                    onChange={(e) => setModalConfig({ ...modalConfig, enabled: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                </label>
+              </div>
+
+              {/* Mode Selection */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-2">
+                  Pilih Metode Pengiriman WhatsApp:
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  
+                  {/* Option 1: Gateway API (Background) */}
+                  <div
+                    onClick={() => setModalConfig({ ...modalConfig, mode: 'gateway' })}
+                    className={`p-3.5 rounded-2xl border cursor-pointer transition-all ${
+                      modalConfig.mode === 'gateway'
+                        ? 'bg-emerald-950/60 border-emerald-500 text-white shadow-lg shadow-emerald-950/40 ring-1 ring-emerald-500'
+                        : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 font-bold mb-1 text-emerald-300">
+                      <Zap className="w-4 h-4 text-emerald-400" />
+                      <span>WhatsApp Gateway API</span>
+                    </div>
+                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                      100% Otomatis di latar belakang. Pesan terkirim langsung dari server ke HP wali tanpa membuka tab browser baru.
+                    </p>
+                    <span className="inline-block mt-2 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      Rekomendasi Sekolah
+                    </span>
+                  </div>
+
+                  {/* Option 2: Direct Click-to-Chat */}
+                  <div
+                    onClick={() => setModalConfig({ ...modalConfig, mode: 'direct' })}
+                    className={`p-3.5 rounded-2xl border cursor-pointer transition-all ${
+                      modalConfig.mode === 'direct'
+                        ? 'bg-cyan-950/60 border-cyan-500 text-white shadow-lg shadow-cyan-950/40 ring-1 ring-cyan-500'
+                        : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 font-bold mb-1 text-cyan-300">
+                      <Smartphone className="w-4 h-4 text-cyan-400" />
+                      <span>WhatsApp Langsung</span>
+                    </div>
+                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                      Membuka WhatsApp Web / App resmi dengan format pesan resmi yang sudah otomatis terisi. Gratis tanpa token pihak ketiga.
+                    </p>
+                    <span className="inline-block mt-2 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                      100% Gratis &amp; Universal
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Gateway Configuration Fields (Only visible in Gateway mode) */}
+              {modalConfig.mode === 'gateway' && (
+                <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-4">
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1.5">
+                      Penyedia Gateway WhatsApp:
+                    </label>
+                    <select
+                      value={modalConfig.provider}
+                      onChange={(e) => setModalConfig({ ...modalConfig, provider: e.target.value as any })}
+                      className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-emerald-400"
+                    >
+                      <option value="fonnte">Fonnte (Rekomendasi Indonesia - api.fonnte.com)</option>
+                      <option value="custom">Custom Webhook / REST API Server</option>
+                      <option value="demo">Mode Simulasi Otomatis (Uji Coba Demo)</option>
+                    </select>
+                  </div>
+
+                  {modalConfig.provider === 'fonnte' && (
+                    <div className="space-y-2">
+                      <label className="block text-slate-300 font-semibold">
+                        Token API Fonnte:
+                      </label>
+                      <div className="relative">
+                        <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                        <input
+                          type="text"
+                          value={modalConfig.apiKey}
+                          onChange={(e) => setModalConfig({ ...modalConfig, apiKey: e.target.value })}
+                          placeholder="Masukkan token dari dashboard Fonnte (cth: aB12cD34...)"
+                          className="w-full pl-9 pr-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono placeholder-slate-600 focus:outline-none focus:border-emerald-400"
+                        />
+                      </div>
+                      <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 text-[11px] text-slate-400 space-y-1">
+                        <p className="font-semibold text-slate-300">Cara Mendapatkan Token Fonnte:</p>
+                        <ol className="list-decimal list-inside space-y-0.5 text-slate-400">
+                          <li>Buka situs <a href="https://fonnte.com" target="_blank" rel="noopener noreferrer" className="text-cyan-400 underline">fonnte.com</a> dan buat akun gratis.</li>
+                          <li>Tautkan perangkat dengan scan QR WhatsApp sekolah di dashboard Fonnte.</li>
+                          <li>Salin <strong>API Token</strong> dan tempelkan pada kolom di atas.</li>
+                        </ol>
+                      </div>
+                    </div>
+                  )}
+
+                  {modalConfig.provider === 'custom' && (
+                    <div className="space-y-2">
+                      <label className="block text-slate-300 font-semibold">
+                        URL Endpoint Webhook / REST API:
+                      </label>
+                      <div className="relative">
+                        <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                        <input
+                          type="url"
+                          value={modalConfig.customEndpoint || ''}
+                          onChange={(e) => setModalConfig({ ...modalConfig, customEndpoint: e.target.value })}
+                          placeholder="https://api.domainsekolah.sch.id/send-wa"
+                          className="w-full pl-9 pr-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono placeholder-slate-600 focus:outline-none focus:border-emerald-400"
+                        />
+                      </div>
+                      <p className="text-[11px] text-slate-500">
+                        Sistem akan mengirimkan HTTP POST dengan body JSON: <code className="text-cyan-300">&#123; phone, studentName, message, tapType, status &#125;</code>
+                      </p>
+                    </div>
+                  )}
+
+                  {modalConfig.provider === 'demo' && (
+                    <div className="p-3 rounded-xl bg-cyan-950/40 border border-cyan-500/30 text-[11px] text-cyan-200">
+                      ℹ️ <strong>Mode Demo Aktif:</strong> Setiap kali siswa tap kartu, pengiriman otomatis akan disimulasikan dari server dengan respon sukses instan tanpa memerlukan token pihak ketiga. Cocok untuk presentasi &amp; simulasi lab.
+                    </div>
+                  )}
+
+                  {/* Test Box */}
+                  <div className="pt-3 border-t border-slate-800/80">
+                    <span className="block font-semibold text-slate-300 mb-2">
+                      Uji Coba Pengiriman Notifikasi Gateway:
+                    </span>
+                    <div className="flex gap-2">
+                      <input
+                        type="tel"
+                        value={testPhoneInput}
+                        onChange={(e) => setTestPhoneInput(e.target.value)}
+                        placeholder="081234567890"
+                        className="flex-1 px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono focus:outline-none focus:border-emerald-400"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleRunTestGateway}
+                        disabled={isTestingGateway}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-xl flex items-center gap-1.5 shrink-0 transition-all shadow-md"
+                      >
+                        {isTestingGateway ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>Menguji...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Send className="w-3.5 h-3.5" />
+                            <span>Kirim Uji Coba</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {testGatewayResult && (
+                      <div className={`mt-2 p-2.5 rounded-xl border text-[11px] ${
+                        testGatewayResult.success
+                          ? 'bg-emerald-950/60 border-emerald-500/60 text-emerald-300'
+                          : 'bg-red-950/60 border-red-500/60 text-red-300'
+                      }`}>
+                        {testGatewayResult.message}
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowWaSettingsModal(false)}
+                  className="px-4 py-2 rounded-xl text-slate-400 hover:text-white font-semibold"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold transition-all shadow-lg shadow-emerald-500/20"
+                >
+                  Simpan Pengaturan
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Floating WA Toast Notification */}
+      {waToast && (
+        <div className="fixed bottom-6 right-6 z-50 p-4 rounded-2xl bg-emerald-950/95 border border-emerald-500/70 text-emerald-200 text-xs flex items-center gap-3 shadow-2xl shadow-emerald-950/80 animate-fadeIn max-w-md">
+          <MessageSquare className="w-5 h-5 text-emerald-400 shrink-0" />
+          <span className="font-medium flex-1">{waToast.text}</span>
+          {waToast.actionUrl && (
+            <a
+              href={waToast.actionUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold shrink-0 shadow-md transition-colors"
+            >
+              {waToast.actionLabel || 'Buka WA'}
+            </a>
+          )}
+          <button
+            onClick={() => setWaToast(null)}
+            className="p-1 text-slate-400 hover:text-white"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
     </section>
   );

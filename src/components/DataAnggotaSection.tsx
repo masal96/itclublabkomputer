@@ -71,6 +71,8 @@ export const DataAnggotaSection: React.FC<DataAnggotaSectionProps> = ({
   const [editRfidUid, setEditRfidUid] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editPhone, setEditPhone] = useState('');
+  const [editParentName, setEditParentName] = useState('');
+  const [editParentPhone, setEditParentPhone] = useState('');
   const [editAvatarUrl, setEditAvatarUrl] = useState('');
   const [editAvatarTab, setEditAvatarTab] = useState<'upload' | 'preset' | 'url'>('upload');
   const [editCustomUrl, setEditCustomUrl] = useState('');
@@ -86,6 +88,8 @@ export const DataAnggotaSection: React.FC<DataAnggotaSectionProps> = ({
   const [addRfidUid, setAddRfidUid] = useState('');
   const [addEmail, setAddEmail] = useState('');
   const [addPhone, setAddPhone] = useState('');
+  const [addParentName, setAddParentName] = useState('');
+  const [addParentPhone, setAddParentPhone] = useState('');
   const [addAvatarUrl, setAddAvatarUrl] = useState('https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=300&auto=format&fit=crop&q=80');
   const [addAvatarTab, setAddAvatarTab] = useState<'upload' | 'preset' | 'url'>('preset');
   const [addCustomUrl, setAddCustomUrl] = useState('');
@@ -132,6 +136,8 @@ export const DataAnggotaSection: React.FC<DataAnggotaSectionProps> = ({
     setEditRfidUid(student.rfidUid);
     setEditEmail(student.email || '');
     setEditPhone(student.phone || '');
+    setEditParentName(student.parentName || '');
+    setEditParentPhone(student.parentPhone || '');
     setEditAvatarUrl(student.avatarUrl);
     setEditAvatarTab('upload');
     setEditCustomUrl('');
@@ -177,6 +183,8 @@ export const DataAnggotaSection: React.FC<DataAnggotaSectionProps> = ({
       rfidUid: editRfidUid.trim() || studentToEdit.rfidUid,
       email: editEmail.trim(),
       phone: editPhone.trim(),
+      parentName: editParentName.trim() || undefined,
+      parentPhone: editParentPhone.trim() || undefined,
       avatarUrl: editAvatarUrl || studentToEdit.avatarUrl,
       qrCodeData: `ITCLUB:${editNisn.trim()}:${editName.trim()}:${editClass.trim()}`,
     };
@@ -198,6 +206,8 @@ export const DataAnggotaSection: React.FC<DataAnggotaSectionProps> = ({
     setAddRfidUid(generateRandomRfid());
     setAddEmail('');
     setAddPhone('');
+    setAddParentName('');
+    setAddParentPhone('');
     setAddAvatarUrl(AVATAR_PRESETS[0].url);
     setAddAvatarTab('preset');
     setAddCustomUrl('');
@@ -247,6 +257,8 @@ export const DataAnggotaSection: React.FC<DataAnggotaSectionProps> = ({
       avatarUrl: addAvatarUrl,
       email: addEmail.trim() || `${addNisn.trim()}@student.sch.id`,
       phone: addPhone.trim() || '0812-0000-0000',
+      parentName: addParentName.trim() || undefined,
+      parentPhone: addParentPhone.trim() || undefined,
       joinedDate: new Date().toISOString().split('T')[0],
       status: addStatus,
       position: addPosition.trim() || (addStatus === 'Pengurus' ? 'Pengurus Divisi' : 'Anggota'),
@@ -285,7 +297,9 @@ export const DataAnggotaSection: React.FC<DataAnggotaSectionProps> = ({
       'Jabatan',
       'RFID UID',
       'Email',
-      'No. WhatsApp',
+      'No. WhatsApp Siswa',
+      'Nama Wali Murid',
+      'No. WhatsApp Wali',
       'Tanggal Bergabung',
     ];
 
@@ -300,6 +314,8 @@ export const DataAnggotaSection: React.FC<DataAnggotaSectionProps> = ({
       s.rfidUid,
       `"${s.email}"`,
       `"${s.phone}"`,
+      `"${s.parentName || '-'}"`,
+      `"${s.parentPhone || '-'}"`,
       s.joinedDate,
     ]);
 
@@ -631,9 +647,21 @@ export const DataAnggotaSection: React.FC<DataAnggotaSectionProps> = ({
                     <div className="flex items-center justify-between text-slate-400">
                       <span className="flex items-center gap-1.5">
                         <Phone className="w-3.5 h-3.5 text-slate-500" />
-                        <span>WhatsApp:</span>
+                        <span>WhatsApp Siswa:</span>
                       </span>
                       <span className="font-mono text-slate-300">{student.phone}</span>
+                    </div>
+                  )}
+
+                  {student.parentPhone && (
+                    <div className="flex items-center justify-between text-slate-400">
+                      <span className="flex items-center gap-1.5">
+                        <Users className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Wali Murid:</span>
+                      </span>
+                      <span className="font-mono text-emerald-300 truncate max-w-[170px]" title={`${student.parentName || 'Wali'} (${student.parentPhone})`}>
+                        {student.parentName ? `${student.parentName}` : student.parentPhone}
+                      </span>
                     </div>
                   )}
 
@@ -697,6 +725,7 @@ export const DataAnggotaSection: React.FC<DataAnggotaSectionProps> = ({
                   <th className="px-4 py-3">Siswa</th>
                   <th className="px-4 py-3">Kelas &amp; NISN</th>
                   <th className="px-4 py-3">Divisi Spesialisasi</th>
+                  <th className="px-4 py-3">Wali Murid (WA)</th>
                   <th className="px-4 py-3">RFID UID</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3 text-right">Aksi Guru</th>
@@ -727,6 +756,19 @@ export const DataAnggotaSection: React.FC<DataAnggotaSectionProps> = ({
                       <span className="px-2 py-0.5 rounded text-[11px] font-mono bg-cyan-950/70 text-cyan-300 border border-cyan-800/50">
                         {s.division}
                       </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {s.parentPhone ? (
+                        <div className="text-slate-300">
+                          <div className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                            {s.parentName || 'Wali Siswa'}
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-mono">{s.parentPhone}</div>
+                        </div>
+                      ) : (
+                        <span className="text-[11px] text-slate-600 italic">Belum diisi</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 font-mono text-cyan-300 text-xs">
                       {s.rfidUid}
@@ -1037,7 +1079,7 @@ export const DataAnggotaSection: React.FC<DataAnggotaSectionProps> = ({
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    Nomor Telepon / WhatsApp
+                    Nomor WhatsApp Siswa
                   </label>
                   <input
                     type="text"
@@ -1059,6 +1101,40 @@ export const DataAnggotaSection: React.FC<DataAnggotaSectionProps> = ({
                     placeholder="nama.siswa@student.sch.id"
                     className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-400"
                   />
+                </div>
+
+                {/* Data Wali Murid untuk Notifikasi WhatsApp Tap Kartu */}
+                <div className="sm:col-span-2 p-3.5 rounded-xl bg-emerald-950/20 border border-emerald-500/30 space-y-3">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    Kontak Wali Murid (Tujuan Notifikasi WhatsApp Tap Kartu)
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">
+                        Nama Orang Tua / Wali
+                      </label>
+                      <input
+                        type="text"
+                        value={editParentName}
+                        onChange={(e) => setEditParentName(e.target.value)}
+                        placeholder="cth: Bpk. Bambang Ramadhan"
+                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">
+                        No. WhatsApp Wali Murid
+                      </label>
+                      <input
+                        type="text"
+                        value={editParentPhone}
+                        onChange={(e) => setEditParentPhone(e.target.value)}
+                        placeholder="081234567890"
+                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono text-emerald-300 focus:outline-none focus:border-emerald-400"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -1358,6 +1434,40 @@ export const DataAnggotaSection: React.FC<DataAnggotaSectionProps> = ({
                     placeholder="nama.siswa@student.sch.id"
                     className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-400"
                   />
+                </div>
+
+                {/* Data Wali Murid untuk Notifikasi WhatsApp Tap Kartu */}
+                <div className="sm:col-span-2 p-3.5 rounded-xl bg-emerald-950/20 border border-emerald-500/30 space-y-3">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    Kontak Wali Murid (Tujuan Notifikasi WhatsApp Tap Kartu)
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">
+                        Nama Orang Tua / Wali
+                      </label>
+                      <input
+                        type="text"
+                        value={addParentName}
+                        onChange={(e) => setAddParentName(e.target.value)}
+                        placeholder="cth: Bpk. Bambang Ramadhan"
+                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">
+                        No. WhatsApp Wali Murid
+                      </label>
+                      <input
+                        type="text"
+                        value={addParentPhone}
+                        onChange={(e) => setAddParentPhone(e.target.value)}
+                        placeholder="081234567890"
+                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono text-emerald-300 focus:outline-none focus:border-emerald-400"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 

@@ -15,6 +15,8 @@
         "avatarUrl": { "type": "string" },
         "email": { "type": "string", "format": "email" },
         "phone": { "type": "string" },
+        "parentName": { "type": "string" },
+        "parentPhone": { "type": "string" },
         "joinedDate": { "type": "string" },
         "status": { "type": "string", "enum": ["Aktif", "Alumni", "Pengurus"] },
         "position": { "type": "string" }
@@ -37,7 +39,9 @@
         "status": { "type": "string", "enum": ["Hadir", "Terlambat", "Izin"] },
         "tapType": { "type": "string", "enum": ["Masuk", "Pulang"] },
         "sessionTitle": { "type": "string" },
-        "notes": { "type": "string" }
+        "notes": { "type": "string" },
+        "parentPhone": { "type": "string" },
+        "waSent": { "type": "boolean" }
       },
       "required": ["id", "timestamp", "studentId", "studentName", "class", "nisn", "division", "method", "status", "tapType"]
     },

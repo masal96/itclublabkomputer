@@ -11,6 +11,8 @@ export interface Student {
   avatarUrl: string;
   email: string;
   phone: string;
+  parentName?: string;
+  parentPhone?: string;
   joinedDate: string;
   status: 'Aktif' | 'Alumni' | 'Pengurus';
   position?: string;
@@ -29,6 +31,8 @@ export interface AttendanceRecord {
   tapType?: 'Masuk' | 'Pulang';
   sessionTitle: string;
   notes?: string;
+  parentPhone?: string;
+  waSent?: boolean;
 }
 
 export type DayOfWeek = 'Senin' | 'Selasa' | 'Rabu' | 'Kamis' | 'Jumat' | 'Sabtu';
