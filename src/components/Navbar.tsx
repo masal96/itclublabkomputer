@@ -43,6 +43,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     { id: 'pembelajaran', label: 'Pembelajaran' },
     { id: 'portofolio', label: 'Portofolio' },
     { id: 'jadwal', label: 'Jadwal' },
+    { id: 'penilaian', label: 'Penilaian' },
     { 
       id: 'absensi', 
       label: 'Absensi (QR & RFID)', 
@@ -100,14 +101,14 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
 
           {/* Desktop Nav Links (Tengah) */}
-          <nav className="hidden lg:flex items-center gap-1 xl:gap-2">
+          <nav className="hidden lg:flex items-center gap-0.5 xl:gap-1.5">
             {navItems.map((item) => {
               const isActive = activeTab === item.id;
               return (
                 <button
                   key={item.id}
                   onClick={() => handleNavClick(item.id, item.isProtected)}
-                  className={`relative px-3 py-2 text-sm font-medium transition-all rounded-lg whitespace-nowrap flex items-center gap-1.5 ${
+                  className={`relative px-2.5 xl:px-3 py-2 text-[13px] xl:text-sm font-medium transition-all rounded-lg whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
                     isActive
                       ? 'text-cyan-300 bg-cyan-950/40 shadow-inner border border-cyan-500/30'
                       : 'text-slate-300 hover:text-white hover:bg-slate-800/40'

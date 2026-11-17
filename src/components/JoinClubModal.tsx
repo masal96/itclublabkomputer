@@ -225,9 +225,9 @@ export const JoinClubModal: React.FC<JoinClubModalProps> = ({
                 >
                   <option value="Python Programming">Python Programming (Dasar, AI &amp; Otomasi)</option>
                   <option value="C# .NET">Pemrograman C# .NET (Software &amp; Game)</option>
-                  <option value="Scratch">Scratch Creative Coding (Logika Pemula)</option>
+                  <option value="Scratch/Pictoblox">Scratch & Pictoblox Creative Coding (Logika Pemula)</option>
                   <option value="Desain Grafis">Desain Grafis &amp; UI/UX Figma</option>
-                  <option value="Jaringan Komputer">Jaringan Komputer &amp; Server MikroTik</option>
+                  <option value="Robotika & Iot">Robotic &amp; IoT</option>
                 </select>
               </div>
 

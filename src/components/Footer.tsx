@@ -32,7 +32,7 @@ export const Footer: React.FC<FooterProps> = ({
             </div>
 
             <p className="text-slate-400 leading-relaxed max-w-sm">
-              Laboratorium Komputer &amp; Ekstrakurikuler IT Club Sekolah. Wadah pengembangan kompetensi digital: C# .NET, Scratch, Desain UI/UX, dan Jaringan Komputer.
+              Laboratorium Komputer &amp; Ekstrakurikuler IT Club Sekolah. Wadah pengembangan kompetensi digital: C# .NET, Scratch, Desain, Robotika dan IoT.
             </p>
 
             <div className="flex items-center gap-2 text-[11px] font-mono text-slate-400">
@@ -85,6 +85,14 @@ export const Footer: React.FC<FooterProps> = ({
                   className="hover:text-cyan-300 transition-colors"
                 >
                   Jadwal Laboratorium
+                </button>
+              </li>
+              <li>
+                <button
+                  onClick={() => setActiveTab('penilaian')}
+                  className="hover:text-cyan-300 transition-colors"
+                >
+                  Penilaian &amp; Rapor Wali
                 </button>
               </li>
             </ul>

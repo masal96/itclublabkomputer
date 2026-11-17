@@ -20,14 +20,12 @@ interface HeroSectionProps {
   onExplorePortfolio: () => void;
   onExploreModules: () => void;
   onOpenJoinModal: () => void;
-  onOpenRfidDemo: () => void;
 }
 
 export const HeroSection: React.FC<HeroSectionProps> = ({
   onExplorePortfolio,
   onExploreModules,
   onOpenJoinModal,
-  onOpenRfidDemo,
 }) => {
   const [isRunningCode, setIsRunningCode] = useState(false);
   const [outputLines, setOutputLines] = useState<string[]>([
@@ -49,10 +47,10 @@ namespace ITClubSekolah
             
             // Inisialisasi Divisi & Fasilitas 2026/2027
             club.DaftarkanDivisi("C# .NET Software Dev");
-            club.DaftarkanDivisi("Scratch Creative Logic");
+            club.DaftarkanDivisi("Scratch/Pictoblox Creative Logic");
             club.DaftarkanDivisi("Python Programming");
             club.DaftarkanDivisi("UI/UX & Desain Grafis");
-            club.DaftarkanDivisi("Jaringan MikroTik & IoT");
+            club.DaftarkanDivisi("Robotika & IoT");
             
             
             club.MulaiSesiBelajar();
@@ -79,7 +77,7 @@ namespace ITClubSekolah
         '🚀 SELAMAT DATANG DI IT CLUB & LAB KOMPUTER SEKOLAH',
         '   Status Lab: ONLINE | Switch GigaBit: 1000 Mbps OK',
         '   Presensi: RFID Card & Dynamic QR Code Terhubung',
-        '   Divisi Aktif: 5 Kelas (C#, Scratch, Python, Desain, Jaringan)',
+        '   Divisi Aktif: 5 Kelas (C#, Scratch/Pictoblox, Python, Desain, Robotika, IoT)',
         '-------------------------------------------------------',
         '✨ Siswa Siap Berinovasi Digital Menghadapi Masa Depan!',
       ]);
@@ -134,9 +132,9 @@ namespace ITClubSekolah
             Pusat pengembangan bakat teknologi sekolah: mulai dari rekayasa perangkat lunak{' '}
             <span className="text-cyan-300 font-semibold">C# .NET</span> &amp;{' '}
             <span className="text-emerald-300 font-semibold">Python Programming</span>, logika komputasi kreatif{' '}
-            <span className="text-teal-300 font-semibold">Scratch</span>, estetika{' '}
-            <span className="text-violet-300 font-semibold">desain grafis & UI/UX</span>, hingga arsitektur{' '}
-            <span className="text-sky-300 font-semibold">jaringan komputer & server</span> sekolah.
+            <span className="text-teal-300 font-semibold">Scratch/Pictoblox</span>, estetika{' '}
+            <span className="text-violet-300 font-semibold">Desain grafis & UI/UX</span>, hingga arsitektur{' '}
+            <span className="text-sky-300 font-semibold">Robotika & IoT</span> sekolah.
           </p>
 
           {/* Call to Action (CTA) */}
@@ -158,15 +156,6 @@ namespace ITClubSekolah
             >
               <BookOpen className="w-4 h-4 text-cyan-400" />
               <span>Akses Modul</span>
-            </button>
-
-            {/* Tombol Cepat Uji Absensi RFID */}
-            <button
-              onClick={onOpenRfidDemo}
-              className="flex items-center gap-2 px-5 py-3.5 rounded-xl font-medium text-xs text-violet-300 border border-violet-500/30 bg-violet-950/20 hover:bg-violet-900/40 hover:border-violet-400 transition-all"
-            >
-              <Radio className="w-3.5 h-3.5 text-violet-400 animate-pulse" />
-              <span>Simulasi Absensi RFID / QR</span>
             </button>
           </div>
         </div>
@@ -299,7 +288,7 @@ namespace ITClubSekolah
               <span className="text-2xl font-mono font-bold text-white tabular-nums">5 Divisi</span>
             </div>
             <h4 className="text-sm font-semibold text-slate-200">Spesialisasi Club</h4>
-            <p className="text-xs text-slate-400 mt-1">Python, C# .NET, Scratch, Desain UI/UX &amp; Jaringan</p>
+            <p className="text-xs text-slate-400 mt-1">Python, C# .NET, Scratch/Pictoblox, Desain UI/UX &amp; Robotika, IoT</p>
           </div>
 
           <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-sm">

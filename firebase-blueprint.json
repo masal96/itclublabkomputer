@@ -97,6 +97,21 @@
       },
       "required": ["id"]
     },
+    "WhatsAppSetting": {
+      "title": "WhatsAppSetting",
+      "description": "Automated WhatsApp gateway and Fonnte API token configuration",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "mode": { "type": "string", "enum": ["gateway", "direct"] },
+        "provider": { "type": "string", "enum": ["fonnte", "custom", "demo"] },
+        "apiKey": { "type": "string" },
+        "customEndpoint": { "type": "string" },
+        "enabled": { "type": "boolean" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "mode", "provider", "enabled"]
+    },
     "ActivityEvent": {
       "title": "ActivityEvent",
       "description": "School lab workshops, internal competitions, and club activities",
@@ -115,6 +130,37 @@
         "maxParticipants": { "type": "number" }
       },
       "required": ["id", "title", "date", "time", "location", "description", "speaker", "category", "status", "maxParticipants"]
+    },
+    "StudentAssessment": {
+      "title": "StudentAssessment",
+      "description": "IT Club student evaluation rubric scores and progress report for parents/guardians",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "nisn": { "type": "string" },
+        "class": { "type": "string" },
+        "division": { "type": "string" },
+        "period": { "type": "string" },
+        "assessmentDate": { "type": "string" },
+        "attendanceScore": { "type": "number" },
+        "materialScore": { "type": "number" },
+        "practiceScore": { "type": "number" },
+        "creativityScore": { "type": "number" },
+        "finalScore": { "type": "number" },
+        "grade": { "type": "string", "enum": ["A", "B", "C", "D"] },
+        "predicate": { "type": "string" },
+        "projectTitle": { "type": "string" },
+        "coachNotes": { "type": "string" },
+        "recommendation": { "type": "string" },
+        "instructorName": { "type": "string" },
+        "published": { "type": "boolean" },
+        "waSent": { "type": "boolean" },
+        "waSentAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "studentId", "studentName", "nisn", "division", "period", "finalScore", "grade", "published"]
     }
   },
   "firestore": {
@@ -141,6 +187,10 @@
     "/settings/{settingId}": {
       "schema": "LabSetting",
       "description": "Lab configuration settings"
+    },
+    "/assessments/{assessmentId}": {
+      "schema": "StudentAssessment",
+      "description": "Collection of student IT Club evaluations and progress reports for parents"
     }
   }
 }

@@ -106,9 +106,9 @@ export const DataAnggotaSection: React.FC<DataAnggotaSectionProps> = ({
 
   const DIVISIONS: DivisionType[] = [
     'C# .NET',
-    'Scratch',
+    'Scratch/Pictoblox',
     'Desain Grafis',
-    'Jaringan Komputer',
+    'Robotika & IoT',
     'Python Programming',
   ];
 

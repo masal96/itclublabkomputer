@@ -89,9 +89,9 @@ export const DaftarAnggotaSection: React.FC<DaftarAnggotaSectionProps> = ({
     'Semua',
     'Python Programming',
     'C# .NET',
-    'Scratch',
+    'Scratch/Pictoblox',
     'Desain Grafis',
-    'Jaringan Komputer',
+    'Robotika & IoT',
   ];
 
   // Division Badge Color mapping
@@ -111,7 +111,7 @@ export const DaftarAnggotaSection: React.FC<DaftarAnggotaSectionProps> = ({
           border: 'border-purple-500/30',
           dot: 'bg-purple-400',
         };
-      case 'Scratch':
+      case 'Scratch/Pictoblox':
         return {
           badge: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
           gradient: 'from-amber-500/20 via-orange-500/10 to-transparent',
@@ -125,7 +125,7 @@ export const DaftarAnggotaSection: React.FC<DaftarAnggotaSectionProps> = ({
           border: 'border-pink-500/30',
           dot: 'bg-pink-400',
         };
-      case 'Jaringan Komputer':
+      case 'Robotika & IoT':
         return {
           badge: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30',
           gradient: 'from-cyan-500/20 via-blue-500/10 to-transparent',

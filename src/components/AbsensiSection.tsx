@@ -34,7 +34,9 @@ import {
   Zap,
   Key,
   Globe,
-  HelpCircle
+  HelpCircle,
+  Cpu,
+  Terminal
 } from 'lucide-react';
 import { Student, AttendanceRecord, AdminUser } from '../types';
 import { soundEffects } from '../utils/audio';
@@ -49,6 +51,11 @@ import {
   sendAutomatedWhatsAppNotification,
   testWhatsAppGateway
 } from '../utils/whatsapp';
+import {
+  saveWhatsAppConfigToFirestore,
+  subscribeToWhatsAppConfig,
+  getWhatsAppConfigFromFirestore
+} from '../services/firebase';
 
 interface AbsensiSectionProps {
   admin: AdminUser;
@@ -93,6 +100,7 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
   const [modalConfig, setModalConfig] = useState<WhatsAppGatewayConfig>(() => getWhatsAppConfig());
   const [testPhoneInput, setTestPhoneInput] = useState('081234567890');
   const [isTestingGateway, setIsTestingGateway] = useState(false);
+  const [isSavingConfig, setIsSavingConfig] = useState(false);
   const [testGatewayResult, setTestGatewayResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const [waSentMap, setWaSentMap] = useState<Record<string, boolean>>({});
@@ -105,7 +113,77 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
   } | null>(null);
   const [waToast, setWaToast] = useState<{ text: string; actionUrl?: string; actionLabel?: string } | null>(null);
 
-  const toggleAutoOpenWa = () => {
+  // REST API & ESP32 Hardware Modal State
+  const [showApiModal, setShowApiModal] = useState(false);
+  const [apiTestUid, setApiTestUid] = useState('');
+  const [apiTestLoading, setApiTestLoading] = useState(false);
+  const [apiTestResponse, setApiTestResponse] = useState<string | null>(null);
+  const [copiedEspCode, setCopiedEspCode] = useState(false);
+
+  const handleOpenApiModal = () => {
+    if (!apiTestUid && students.length > 0) {
+      setApiTestUid(students[0].rfidUid);
+    }
+    setApiTestResponse(null);
+    setShowApiModal(true);
+  };
+
+  const handleTestRfidApi = async (endpointType: 'health' | 'tap') => {
+    setApiTestLoading(true);
+    setApiTestResponse(null);
+    try {
+      const res =
+        endpointType === 'health'
+          ? await fetch('/api/health')
+          : await fetch('/api/rfid/tap', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                uid: apiTestUid.trim(),
+                deviceName: 'Uji Simulasi ESP32 Browser',
+              }),
+            });
+      const data = await res.json();
+      setApiTestResponse(JSON.stringify(data, null, 2));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setApiTestResponse(JSON.stringify({ success: false, error: msg }, null, 2));
+    } finally {
+      setApiTestLoading(false);
+    }
+  };
+
+  // Sync WhatsApp config across all devices via Cloud Firestore
+  useEffect(() => {
+    // 1. Subscribe to Cloud Firestore real-time updates
+    const unsubscribe = subscribeToWhatsAppConfig((remoteConfig) => {
+      if (remoteConfig) {
+        console.log('[Firestore] Synced WhatsApp config from server:', remoteConfig);
+        setWaConfig(remoteConfig);
+        saveWhatsAppConfig(remoteConfig); // update local storage cache
+      }
+    });
+
+    // 2. Initial fetch & one-time upload if local device has token but Firestore is empty
+    getWhatsAppConfigFromFirestore()
+      .then((serverConfig) => {
+        if (serverConfig && (serverConfig.apiKey || serverConfig.mode)) {
+          setWaConfig(serverConfig);
+          saveWhatsAppConfig(serverConfig);
+        } else {
+          // If Firestore is empty, but local storage on this device has an existing token, upload it!
+          const local = getWhatsAppConfig();
+          if (local && local.apiKey) {
+            saveWhatsAppConfigToFirestore(local).catch(console.warn);
+          }
+        }
+      })
+      .catch((err) => console.warn('[Firestore] getWhatsAppConfigFromFirestore error:', err));
+
+    return () => unsubscribe();
+  }, []);
+
+  const toggleAutoOpenWa = async () => {
     const nextVal = !waConfig.enabled;
     const updated: WhatsAppGatewayConfig = { ...waConfig, enabled: nextVal };
     setWaConfig(updated);
@@ -113,6 +191,12 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
     showWaToast({
       text: `Notifikasi WA otomatis ke wali: ${nextVal ? 'AKTIF (Otomatis Kirim)' : 'NONAKTIF'}`,
     });
+    try {
+      await saveWhatsAppConfigToFirestore(updated);
+      console.log('[Firestore] Synced auto WA toggle to cloud');
+    } catch (err) {
+      console.warn('[Firestore] Failed to sync auto WA toggle:', err);
+    }
   };
 
   const showWaToast = (toast: { text: string; actionUrl?: string; actionLabel?: string } | string) => {
@@ -163,12 +247,22 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
     setShowWaSettingsModal(true);
   };
 
-  const handleSaveSettings = (e: React.FormEvent) => {
+  const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSavingConfig(true);
     setWaConfig(modalConfig);
     saveWhatsAppConfig(modalConfig);
-    setShowWaSettingsModal(false);
-    showWaToast({ text: 'Pengaturan notifikasi WhatsApp otomatis berhasil disimpan!' });
+    try {
+      await saveWhatsAppConfigToFirestore(modalConfig);
+      setShowWaSettingsModal(false);
+      showWaToast({ text: 'Token & Pengaturan WhatsApp berhasil disimpan ke Cloud Database (Tersinkron ke Semua Perangkat)!' });
+    } catch (err) {
+      console.error('[Firestore] Failed to save WhatsApp config:', err);
+      setShowWaSettingsModal(false);
+      showWaToast({ text: 'Pengaturan tersimpan di browser ini, namun periksa koneksi internet untuk sinkronisasi cloud.' });
+    } finally {
+      setIsSavingConfig(false);
+    }
   };
 
   const handleRunTestGateway = async () => {
@@ -655,6 +749,17 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
             <span>Pengaturan WA</span>
           </button>
 
+          {/* REST API & ESP32 Hardware Button */}
+          <button
+            type="button"
+            onClick={handleOpenApiModal}
+            className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-xl bg-slate-900 hover:bg-slate-800 border border-violet-500/40 text-violet-300 hover:text-white transition-all shadow-sm"
+            title="Lihat Endpoint REST API & Kode ESP32 RFID"
+          >
+            <Cpu className="w-4 h-4 text-violet-400" />
+            <span>REST API &amp; ESP32</span>
+          </button>
+
           <button
             onClick={handleExportCsv}
             className="flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl bg-slate-900 hover:bg-slate-800 border border-cyan-500/30 text-cyan-300 transition-all shadow-sm"
@@ -715,7 +820,7 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
               }`}
               title="Gunakan waktu jam nyata perangkat Anda"
             >
-              Waktu Riil
+              Waktu Real
             </button>
             <button
               type="button"
@@ -1885,6 +1990,14 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
                 </div>
               )}
 
+              {/* Cloud Sync Notification Notice */}
+              <div className="p-3 rounded-xl bg-cyan-950/30 border border-cyan-500/30 flex items-center gap-2.5 text-[11px] text-cyan-200">
+                <Globe className="w-4 h-4 text-cyan-400 shrink-0" />
+                <span>
+                  <strong>Tersinkronisasi Cloud:</strong> Token dan pengaturan disimpan ke Cloud Firestore sehingga langsung aktif dan tidak hilang saat membuka situs di perangkat lain.
+                </span>
+              </div>
+
               {/* Actions */}
               <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-3">
                 <button
@@ -1896,13 +2009,214 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold transition-all shadow-lg shadow-emerald-500/20"
+                  disabled={isSavingConfig}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:opacity-50 text-slate-950 font-bold transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2"
                 >
-                  Simpan Pengaturan
+                  {isSavingConfig ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin text-slate-950" />
+                      <span>Menyimpan ke Cloud...</span>
+                    </>
+                  ) : (
+                    <span>Simpan Pengaturan</span>
+                  )}
                 </button>
               </div>
 
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: REST API & ESP32 HARDWARE INTEGRATION */}
+      {showApiModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md overflow-y-auto animate-fadeIn">
+          <div className="relative w-full max-w-2xl rounded-3xl bg-[#0b1120] border border-violet-500/40 p-6 sm:p-7 shadow-2xl my-auto max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-4 mb-5">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-violet-950/80 border border-violet-500/40 text-violet-300">
+                  <Cpu className="w-6 h-6 text-violet-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">
+                    REST API &amp; Integrasi Mesin RFID / ESP32
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Endpoint JSON siap pakai untuk mikrokontroler ESP32, NodeMCU, atau alat pembaca RFID jaringan.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowApiModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-5 text-xs">
+              {/* Daftar Endpoint */}
+              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2.5">
+                <div className="font-bold text-cyan-300 flex items-center gap-2">
+                  <Terminal className="w-4 h-4" />
+                  <span>Daftar Endpoint REST API Aktif</span>
+                </div>
+                <div className="space-y-1.5 font-mono text-[11px]">
+                  <div className="p-2 rounded-lg bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                    <span><strong className="text-emerald-400">POST</strong> {typeof window !== 'undefined' ? window.location.origin : ''}/api/rfid/tap</span>
+                    <span className="text-slate-400 font-sans">Kirim tap UID + Auto WA Wali</span>
+                  </div>
+                  <div className="p-2 rounded-lg bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                    <span><strong className="text-cyan-400">GET</strong> {typeof window !== 'undefined' ? window.location.origin : ''}/api/rfid/tap?uid=UID</span>
+                    <span className="text-slate-400 font-sans">Alternatif GET untuk ESP32</span>
+                  </div>
+                  <div className="p-2 rounded-lg bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                    <span><strong className="text-cyan-400">GET</strong> {typeof window !== 'undefined' ? window.location.origin : ''}/api/rfid/check/:uid</span>
+                    <span className="text-slate-400 font-sans">Cek status kartu terdaftar</span>
+                  </div>
+                  <div className="p-2 rounded-lg bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                    <span><strong className="text-cyan-400">GET</strong> {typeof window !== 'undefined' ? window.location.origin : ''}/api/students</span>
+                    <span className="text-slate-400 font-sans">Ambil daftar siswa</span>
+                  </div>
+                  <div className="p-2 rounded-lg bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                    <span><strong className="text-cyan-400">GET</strong> {typeof window !== 'undefined' ? window.location.origin : ''}/api/attendance</span>
+                    <span className="text-slate-400 font-sans">Ambil log presensi terbaru</span>
+                  </div>
+                  <div className="p-2 rounded-lg bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                    <span><strong className="text-cyan-400">GET</strong> {typeof window !== 'undefined' ? window.location.origin : ''}/api/health</span>
+                    <span className="text-slate-400 font-sans">Cek status server &amp; Firestore</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Uji Coba Endpoint Langsung */}
+              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
+                <div className="font-bold text-white flex items-center justify-between">
+                  <span>Uji Coba Endpoint REST API Langsung</span>
+                  <button
+                    type="button"
+                    onClick={() => handleTestRfidApi('health')}
+                    disabled={apiTestLoading}
+                    className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 font-mono text-[11px] border border-cyan-500/30"
+                  >
+                    GET /api/health
+                  </button>
+                </div>
+
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={apiTestUid}
+                    onChange={(e) => setApiTestUid(e.target.value)}
+                    placeholder="Masukkan UID RFID siswa (cth: A4B2-7819-21)"
+                    className="flex-1 px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono focus:outline-none focus:border-violet-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleTestRfidApi('tap')}
+                    disabled={apiTestLoading || !apiTestUid.trim()}
+                    className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white font-bold flex items-center gap-1.5 shrink-0"
+                  >
+                    {apiTestLoading ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Zap className="w-3.5 h-3.5" />
+                    )}
+                    <span>POST /api/rfid/tap</span>
+                  </button>
+                </div>
+
+                {apiTestResponse && (
+                  <pre className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-[11px] font-mono text-emerald-300 overflow-x-auto max-h-48">
+                    {apiTestResponse}
+                  </pre>
+                )}
+              </div>
+
+              {/* Contoh Kode ESP32 Arduino */}
+              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-amber-300">Contoh Program ESP32 + RC522 (Arduino IDE)</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const origin = typeof window !== 'undefined' ? window.location.origin : 'https://domain-web-anda.com';
+                      const snippet = `#include <WiFi.h>
+#include <HTTPClient.h>
+#include <SPI.h>
+#include <MFRC522.h>
+
+#define SS_PIN 5
+#define RST_PIN 22
+
+const char* ssid = "NAMA_WIFI_SEKOLAH";
+const char* password = "PASSWORD_WIFI";
+const char* serverUrl = "${origin}/api/rfid/tap";
+
+MFRC522 rfid(SS_PIN, RST_PIN);
+
+void setup() {
+  Serial.begin(115200);
+  SPI.begin();
+  rfid.PCD_Init();
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\\nWiFi Terhubung! Siap Scan RFID.");
+}
+
+void loop() {
+  if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) return;
+
+  String uid = "";
+  for (byte i = 0; i < rfid.uid.size; i++) {
+    if (rfid.uid.uidByte[i] < 0x10) uid += "0";
+    uid += String(rfid.uid.uidByte[i], HEX);
+  }
+  uid.toUpperCase();
+
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin(serverUrl);
+    http.addHeader("Content-Type", "application/json");
+    String payload = "{\\"uid\\":\\"" + uid + "\\",\\"deviceName\\":\\"ESP32-Lab-1\\"}";
+    int httpCode = http.POST(payload);
+    String response = http.getString();
+    Serial.println("HTTP Code: " + String(httpCode));
+    Serial.println("Response: " + response);
+    http.end();
+  }
+
+  rfid.PICC_HaltA();
+  delay(2000);
+}`;
+                      navigator.clipboard?.writeText(snippet);
+                      setCopiedEspCode(true);
+                      setTimeout(() => setCopiedEspCode(false), 3000);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 text-[11px]"
+                  >
+                    {copiedEspCode ? <CheckCheck className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedEspCode ? 'Tersalin!' : 'Salin Kode ESP32'}</span>
+                  </button>
+                </div>
+
+                <pre className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-[10px] font-mono text-slate-300 overflow-x-auto max-h-56 leading-relaxed">
+{`// Endpoint Target: ${typeof window !== 'undefined' ? window.location.origin : ''}/api/rfid/tap
+// Method: POST | Header: Content-Type: application/json
+// Body JSON: { "uid": "A4B2781921", "deviceName": "ESP32-Lab-1" }
+
+HTTPClient http;
+http.begin("${typeof window !== 'undefined' ? window.location.origin : ''}/api/rfid/tap");
+http.addHeader("Content-Type", "application/json");
+String payload = "{\\"uid\\":\\"" + uid + "\\",\\"deviceName\\":\\"ESP32-Lab-1\\"}";
+int httpCode = http.POST(payload);`}
+                </pre>
+              </div>
+            </div>
           </div>
         </div>
       )}

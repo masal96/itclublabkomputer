@@ -11,6 +11,7 @@ import { KegiatanSection } from './components/KegiatanSection';
 import { AdminLoginModal } from './components/AdminLoginModal';
 import { JoinClubModal } from './components/JoinClubModal';
 import { Footer } from './components/Footer';
+import { PenilaianSection } from './components/PenilaianSection';
 
 import { 
   INITIAL_STUDENTS, 
@@ -18,7 +19,8 @@ import {
   INITIAL_SCHEDULE, 
   INITIAL_PORTFOLIO, 
   INITIAL_MODULES, 
-  INITIAL_ACTIVITIES 
+  INITIAL_ACTIVITIES,
+  INITIAL_ASSESSMENTS
 } from './data/initialData';
 
 import { 
@@ -27,6 +29,7 @@ import {
   ScheduleItem, 
   PortfolioItem, 
   ActivityEvent,
+  StudentAssessment,
   AdminUser 
 } from './types';
 
@@ -51,7 +54,15 @@ import {
   saveActivityToFirestore,
   deleteActivityFromFirestore,
   subscribeToActivities,
+  getWhatsAppConfigFromFirestore,
+  saveWhatsAppConfigToFirestore,
+  subscribeToWhatsAppConfig,
+  getOrSeedAssessments,
+  saveAssessmentToFirestore,
+  deleteAssessmentFromFirestore,
+  subscribeToAssessments,
 } from './services/firebase';
+import { getWhatsAppConfig, saveWhatsAppConfig } from './utils/whatsapp';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>('beranda');
@@ -122,6 +133,15 @@ export default function App() {
     return INITIAL_ACTIVITIES;
   });
 
+  // Student Assessments List
+  const [assessments, setAssessments] = useState<StudentAssessment[]>(() => {
+    try {
+      const saved = localStorage.getItem('itclub_assessments');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return INITIAL_ASSESSMENTS;
+  });
+
   // Save changes to localStorage
   useEffect(() => {
     localStorage.setItem('itclub_admin', JSON.stringify(admin));
@@ -146,6 +166,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('itclub_activities', JSON.stringify(activityList));
   }, [activityList]);
+
+  useEffect(() => {
+    localStorage.setItem('itclub_assessments', JSON.stringify(assessments));
+  }, [assessments]);
 
   // Synchronize with Firebase Firestore Server
   useEffect(() => {
@@ -229,12 +253,51 @@ export default function App() {
       }
     });
 
+    // 6. Sync WhatsApp Gateway configuration across devices via Cloud Firestore
+    getWhatsAppConfigFromFirestore()
+      .then((serverConfig) => {
+        if (serverConfig && (serverConfig.apiKey || serverConfig.mode)) {
+          saveWhatsAppConfig(serverConfig);
+        } else {
+          const local = getWhatsAppConfig();
+          if (local && local.apiKey) {
+            saveWhatsAppConfigToFirestore(local).catch(console.warn);
+          }
+        }
+      })
+      .catch((err) => console.warn('Firestore getWhatsAppConfig error:', err));
+
+    const unsubWaConfig = subscribeToWhatsAppConfig((liveWaConfig) => {
+      if (liveWaConfig) {
+        saveWhatsAppConfig(liveWaConfig);
+      }
+    });
+
+    // 7. Fetch or seed student assessments & subscribe in real-time
+    getOrSeedAssessments()
+      .then((serverAssessments) => {
+        if (serverAssessments && serverAssessments.length > 0) {
+          setAssessments(serverAssessments);
+        }
+      })
+      .catch((err) => {
+        console.warn('Firestore getOrSeedAssessments error:', err);
+      });
+
+    const unsubAssessments = subscribeToAssessments((liveAssessments) => {
+      if (liveAssessments && liveAssessments.length > 0) {
+        setAssessments(liveAssessments);
+      }
+    });
+
     return () => {
       unsubStudents();
       unsubAttendance();
       unsubSchedules();
       unsubPortfolios();
       unsubActivities();
+      unsubWaConfig();
+      unsubAssessments();
     };
   }, []);
 
@@ -390,6 +453,36 @@ export default function App() {
     }
   };
 
+  const handleAddAssessment = async (item: StudentAssessment) => {
+    setAssessments((prev) => [item, ...prev]);
+    try {
+      await saveAssessmentToFirestore(item);
+      console.log('Assessment successfully synced to Cloud Firestore');
+    } catch (err) {
+      console.warn('Error saving assessment to Firestore:', err);
+    }
+  };
+
+  const handleUpdateAssessment = async (updated: StudentAssessment) => {
+    setAssessments((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+    try {
+      await saveAssessmentToFirestore(updated);
+      console.log('Updated assessment successfully synced to Cloud Firestore');
+    } catch (err) {
+      console.warn('Error updating assessment to Firestore:', err);
+    }
+  };
+
+  const handleDeleteAssessment = async (id: string) => {
+    setAssessments((prev) => prev.filter((a) => a.id !== id));
+    try {
+      await deleteAssessmentFromFirestore(id);
+      console.log('Deleted assessment from Cloud Firestore');
+    } catch (err) {
+      console.warn('Error deleting assessment from Firestore:', err);
+    }
+  };
+
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode);
     if (!isDarkMode) {
@@ -424,13 +517,6 @@ export default function App() {
               onExplorePortfolio={() => setActiveTab('portofolio')}
               onExploreModules={() => setActiveTab('pembelajaran')}
               onOpenJoinModal={() => setJoinModalOpen(true)}
-              onOpenRfidDemo={() => {
-                if (admin.isAuthenticated) {
-                  setActiveTab('absensi');
-                } else {
-                  setAdminModalOpen(true);
-                }
-              }}
             />
 
             {/* Quick Preview of Portfolio in Home */}
@@ -503,6 +589,20 @@ export default function App() {
             onAddSchedule={handleAddSchedule}
             onUpdateSchedule={handleUpdateSchedule}
             onDeleteSchedule={handleDeleteSchedule}
+            onOpenAdminModal={() => setAdminModalOpen(true)}
+          />
+        )}
+
+        {/* PENILAIAN & RAPOR WALI MURID (PUBLIC READ + GURU CRUD) */}
+        {activeTab === 'penilaian' && (
+          <PenilaianSection
+            admin={admin}
+            students={students}
+            attendanceRecords={attendanceRecords}
+            assessments={assessments}
+            onAddAssessment={handleAddAssessment}
+            onUpdateAssessment={handleUpdateAssessment}
+            onDeleteAssessment={handleDeleteAssessment}
             onOpenAdminModal={() => setAdminModalOpen(true)}
           />
         )}

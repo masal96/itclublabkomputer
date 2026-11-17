@@ -77,17 +77,26 @@
     display: none !important;
   }
 
-  /* Ensure printable area and its cards are clearly displayed and colored */
-  #printable-card-area {
+  /* Ensure printable area and its cards/reports are clearly displayed and colored */
+  #printable-card-area,
+  #printable-report-area {
     display: block !important;
     position: static !important;
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
-    background: transparent !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
     box-shadow: none !important;
     border: none !important;
+  }
+
+  #printable-report-area * {
+    color: #0f172a !important;
+    border-color: #cbd5e1 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
   .print-card-box {

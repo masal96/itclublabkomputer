@@ -1,4 +1,4 @@
-export type DivisionType = 'C# .NET' | 'Scratch' | 'Desain Grafis' | 'Jaringan Komputer' | 'Python Programming';
+export type DivisionType = 'C# .NET' | 'Scratch/Pictoblox' | 'Desain Grafis' | 'Robotika & IoT' | 'Python Programming';
 
 export interface Student {
   id: string;
@@ -45,7 +45,7 @@ export interface ScheduleItem {
   title: string;
   category: 'Kelas Reguler' | 'IT Club' | 'Praktikum' | 'Maintenance' | 'Workshop';
   instructor: string;
-  room: 'Lab Komputer' | 'Lab Komputer 1 (Utama)' | 'Lab Komputer 2 (Multimedia)' | 'Lab Jaringan & Server';
+  room: 'Lab Komputer' ;
   capacity: number;
   description: string;
 }
@@ -53,7 +53,7 @@ export interface ScheduleItem {
 export interface PortfolioItem {
   id: string;
   title: string;
-  category: 'C# Desktop' | 'Scratch Game' | 'UI/UX Design' | 'Jaringan & IoT' | 'Web Apps';
+  category: 'C# Desktop' | 'Scratch/Pictoblox Game' | 'UI/UX Design' | 'Robotika & IoT' | 'Web Apps';
   description: string;
   studentAuthors: string[];
   gradeClass: string;
@@ -99,4 +99,30 @@ export interface AdminUser {
   role: 'guru_admin';
   email: string;
   avatar: string;
+}
+
+export interface StudentAssessment {
+  id: string;
+  studentId: string;
+  studentName: string;
+  nisn: string;
+  class: string;
+  division: DivisionType;
+  period: string;
+  assessmentDate: string;
+  attendanceScore: number; // Bobot 20%
+  materialScore: number;   // Bobot 25%
+  practiceScore: number;   // Bobot 35%
+  creativityScore: number; // Bobot 20%
+  finalScore: number;
+  grade: 'A' | 'B' | 'C' | 'D';
+  predicate: string;
+  projectTitle: string;
+  coachNotes: string;
+  recommendation: string;
+  instructorName: string;
+  published: boolean;
+  waSent?: boolean;
+  waSentAt?: string;
+  updatedAt: string;
 }

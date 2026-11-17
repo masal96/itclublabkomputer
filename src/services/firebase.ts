@@ -6,6 +6,7 @@ import {
   setDoc, 
   deleteDoc,
   getDocs, 
+  getDoc,
   getDocFromServer,
   onSnapshot, 
   query, 
@@ -15,13 +16,15 @@ import {
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import config from '../../firebase-applet-config.json';
-import { Student, AttendanceRecord, ScheduleItem, PortfolioItem, ActivityEvent } from '../types';
+import { Student, AttendanceRecord, ScheduleItem, PortfolioItem, ActivityEvent, StudentAssessment } from '../types';
+import { WhatsAppGatewayConfig } from '../utils/whatsapp';
 import { 
   INITIAL_STUDENTS, 
   INITIAL_ATTENDANCE, 
   INITIAL_SCHEDULE, 
   INITIAL_PORTFOLIO,
-  INITIAL_ACTIVITIES 
+  INITIAL_ACTIVITIES,
+  INITIAL_ASSESSMENTS
 } from '../data/initialData';
 
 // Firebase Configuration with reliable fallbacks for external deployments (Vercel, Netlify)
@@ -443,4 +446,152 @@ export function subscribeToActivities(callback: (activities: ActivityEvent[]) =>
     return () => {};
   }
 }
+
+// ==========================================
+// 6. WHATSAPP GATEWAY & TOKEN SETTINGS
+// ==========================================
+export async function getWhatsAppConfigFromFirestore(): Promise<WhatsAppGatewayConfig | null> {
+  try {
+    const docRef = doc(db, 'settings', 'whatsapp');
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      return {
+        mode: data.mode || 'gateway',
+        provider: data.provider || 'fonnte',
+        apiKey: data.apiKey || '',
+        customEndpoint: data.customEndpoint || '',
+        enabled: data.enabled !== undefined ? Boolean(data.enabled) : true,
+      };
+    }
+  } catch (err) {
+    console.warn('[Firestore] Error fetching whatsapp config from server:', err);
+  }
+  return null;
+}
+
+export async function saveWhatsAppConfigToFirestore(config: WhatsAppGatewayConfig): Promise<void> {
+  try {
+    const docRef = doc(db, 'settings', 'whatsapp');
+    const payload = sanitizeForFirestore({
+      ...config,
+      id: 'whatsapp',
+      updatedAt: new Date().toISOString(),
+    });
+    await setDoc(docRef, payload, { merge: true });
+    console.log('[Firestore] WhatsApp gateway configuration synced to cloud server:', payload);
+  } catch (err) {
+    console.error('[Firestore] Failed to save whatsapp config to server:', err);
+    throw err;
+  }
+}
+
+export function subscribeToWhatsAppConfig(
+  callback: (config: WhatsAppGatewayConfig) => void
+): () => void {
+  try {
+    const docRef = doc(db, 'settings', 'whatsapp');
+    const unsubscribe = onSnapshot(
+      docRef,
+      (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          const parsed: WhatsAppGatewayConfig = {
+            mode: data.mode || 'gateway',
+            provider: data.provider || 'fonnte',
+            apiKey: data.apiKey || '',
+            customEndpoint: data.customEndpoint || '',
+            enabled: data.enabled !== undefined ? Boolean(data.enabled) : true,
+          };
+          callback(parsed);
+        }
+      },
+      (error) => console.warn('[Firestore] WhatsApp config subscription error:', error)
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.warn('[Firestore] WhatsApp config subscription failed:', err);
+    return () => {};
+  }
+}
+
+// ==========================================
+// 7. STUDENT ASSESSMENTS (PENILAIAN & RAPOR IT CLUB)
+// ==========================================
+export async function getOrSeedAssessments(): Promise<StudentAssessment[]> {
+  try {
+    const col = collection(db, 'assessments');
+    const snapshot = await getDocs(col);
+
+    if (!snapshot.empty) {
+      const list: StudentAssessment[] = [];
+      snapshot.forEach((d) => {
+        list.push(d.data() as StudentAssessment);
+      });
+      return list;
+    }
+
+    console.log('[Firestore] Seeding initial assessments to Firestore server...');
+    const seeded: StudentAssessment[] = [];
+    for (const a of INITIAL_ASSESSMENTS) {
+      await setDoc(doc(db, 'assessments', a.id), sanitizeForFirestore(a));
+      seeded.push(a);
+    }
+    return seeded;
+  } catch (err) {
+    console.warn('[Firestore] Error fetching assessments, using fallback:', err);
+    return INITIAL_ASSESSMENTS;
+  }
+}
+
+export async function saveAssessmentToFirestore(assessment: StudentAssessment): Promise<void> {
+  try {
+    const payload = sanitizeForFirestore({
+      ...assessment,
+      updatedAt: assessment.updatedAt || new Date().toISOString(),
+    });
+    await setDoc(doc(db, 'assessments', assessment.id), payload, { merge: true });
+    console.log('[Firestore] Assessment saved to server:', assessment.id);
+  } catch (err) {
+    console.error('[Firestore] Failed to save assessment to server:', err);
+    throw err;
+  }
+}
+
+export async function deleteAssessmentFromFirestore(id: string): Promise<void> {
+  try {
+    await deleteDoc(doc(db, 'assessments', id));
+    console.log('[Firestore] Assessment deleted from server:', id);
+  } catch (err) {
+    console.error('[Firestore] Failed to delete assessment:', err);
+    throw err;
+  }
+}
+
+export function subscribeToAssessments(
+  callback: (assessments: StudentAssessment[]) => void
+): () => void {
+  try {
+    const col = collection(db, 'assessments');
+    const unsubscribe = onSnapshot(
+      col,
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const list: StudentAssessment[] = [];
+          snapshot.forEach((d) => {
+            list.push(d.data() as StudentAssessment);
+          });
+          callback(list);
+        }
+      },
+      (error) => console.warn('[Firestore] Assessments subscription error:', error)
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.warn('[Firestore] Assessments subscription failed:', err);
+    return () => {};
+  }
+}
+
+
 

@@ -1,4 +1,4 @@
-import { Student, AttendanceRecord } from '../types';
+import { Student, AttendanceRecord, StudentAssessment } from '../types';
 
 /**
  * Normalizes an Indonesian phone number to international format (628...)
@@ -374,3 +374,169 @@ _Status:_ *Koneksi Berhasil & Aktif*
   window.open(directUrl, '_blank', 'noopener,noreferrer');
   return { success: true, message: `Membuka WhatsApp Web untuk nomor pengujian ${targetPhone}...` };
 }
+
+/**
+ * Generates an official Indonesian WhatsApp progress report message for parents/guardians
+ */
+export function generateAssessmentWhatsAppMessage(
+  student: Student | undefined,
+  assessment: StudentAssessment
+): string {
+  const parentSalutation = student?.parentName
+    ? `Bapak/Ibu *${student.parentName}* (Wali dari ananda *${assessment.studentName}*)`
+    : `Bapak/Ibu Wali Murid dari ananda *${assessment.studentName}*`;
+
+  return `📊 *LAPORAN HASIL BELAJAR & PENILAIAN IT CLUB*
+--------------------------------------------------
+Yth. ${parentSalutation},
+
+Berikut adalah ringkasan hasil evaluasi kegiatan ekstrakurikuler *IT Club & Laboratorium Komputer* untuk periode *${assessment.period}*:
+
+👤 *Nama Siswa:* ${assessment.studentName}
+🆔 *NISN:* ${assessment.nisn}
+📚 *Kelas:* ${assessment.class}
+💻 *Divisi:* ${assessment.division}
+
+📈 *RINCIAN NILAI ASPEK PENILAIAN:*
+• Kehadiran & Disiplin (20%): *${assessment.attendanceScore}*
+• Pemahaman Materi & Logika (25%): *${assessment.materialScore}*
+• Praktikum & Karya Proyek (35%): *${assessment.practiceScore}*
+• Kreativitas & Kolaborasi (20%): *${assessment.creativityScore}*
+
+🏆 *Nilai Akhir:* *${assessment.finalScore} / 100* (Predikat *${assessment.grade}* — ${assessment.predicate})
+🛠️ *Proyek / Karya:* ${assessment.projectTitle || '-'}
+
+📝 *Catatan Pembina:*
+_${assessment.coachNotes || '-'}_
+
+💡 *Rekomendasi:*
+${assessment.recommendation || '-'}
+
+Laporan lengkap beserta rincian presensi dapat diakses oleh orang tua/wali melalui menu *Penilaian* di portal web IT Club dengan memasukkan NISN ananda (*${assessment.nisn}*).
+
+_Hormat kami,_
+*${assessment.instructorName || 'Tim Pembina IT Club'}*
+--------------------------------------------------`;
+}
+
+/**
+ * Sends student assessment progress report to parent's WhatsApp (Fonnte Gateway / Custom Webhook / Direct WA)
+ */
+export async function sendAssessmentWhatsAppNotification(
+  student: Student | undefined,
+  assessment: StudentAssessment,
+  config: WhatsAppGatewayConfig
+): Promise<{ success: boolean; method: 'gateway' | 'direct'; message: string; url?: string }> {
+  const targetPhone = student?.parentPhone || student?.phone;
+  if (!targetPhone) {
+    return {
+      success: false,
+      method: config.mode,
+      message: `Nomor WhatsApp wali murid untuk ${assessment.studentName} belum terdaftar di Data Anggota.`,
+    };
+  }
+
+  const cleanPhone = formatWhatsAppNumber(targetPhone);
+  const messageText = generateAssessmentWhatsAppMessage(student, assessment);
+  const directUrl = getWhatsAppDirectUrl(cleanPhone, messageText);
+
+  if (config.mode === 'gateway') {
+    if (config.provider === 'fonnte' && config.apiKey?.trim()) {
+      try {
+        const formData = new FormData();
+        formData.append('target', cleanPhone);
+        formData.append('message', messageText);
+
+        const res = await fetch('https://api.fonnte.com/send', {
+          method: 'POST',
+          headers: { Authorization: config.apiKey.trim() },
+          body: formData,
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && (data.status === true || data.status === 'true' || data.id)) {
+          return {
+            success: true,
+            method: 'gateway',
+            message: `Laporan penilaian ananda ${assessment.studentName} berhasil dikirim otomatis ke WA wali (${targetPhone}) via Fonnte!`,
+            url: directUrl,
+          };
+        }
+        return {
+          success: false,
+          method: 'gateway',
+          message: `Gagal via Fonnte: ${data.reason || data.message || 'Cek token Fonnte'}. Gunakan tautan WhatsApp langsung.`,
+          url: directUrl,
+        };
+      } catch (err: any) {
+        return {
+          success: false,
+          method: 'gateway',
+          message: `Koneksi Fonnte gagal (${err.message || 'Cek internet'}). Gunakan tautan WhatsApp langsung.`,
+          url: directUrl,
+        };
+      }
+    }
+
+    if (config.provider === 'custom' && config.customEndpoint?.trim()) {
+      try {
+        const res = await fetch(config.customEndpoint.trim(), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'student_assessment_report',
+            phone: cleanPhone,
+            target: targetPhone,
+            studentName: assessment.studentName,
+            nisn: assessment.nisn,
+            class: assessment.class,
+            division: assessment.division,
+            period: assessment.period,
+            finalScore: assessment.finalScore,
+            grade: assessment.grade,
+            message: messageText,
+          }),
+        });
+        if (res.ok) {
+          return {
+            success: true,
+            method: 'gateway',
+            message: `Laporan penilaian berhasil dikirim otomatis via Webhook ke wali ${assessment.studentName} (${targetPhone})!`,
+            url: directUrl,
+          };
+        }
+        return {
+          success: false,
+          method: 'gateway',
+          message: `Webhook merespons status HTTP ${res.status}. Gunakan tautan langsung.`,
+          url: directUrl,
+        };
+      } catch (err: any) {
+        return {
+          success: false,
+          method: 'gateway',
+          message: `Gagal menghubungi webhook: ${err.message}. Gunakan tautan langsung.`,
+          url: directUrl,
+        };
+      }
+    }
+
+    if (config.provider === 'demo') {
+      await new Promise((r) => setTimeout(r, 500));
+      return {
+        success: true,
+        method: 'gateway',
+        message: `[Simulasi Sukses] Laporan penilaian ananda ${assessment.studentName} dikirim ke ${targetPhone}!`,
+        url: directUrl,
+      };
+    }
+  }
+
+  return {
+    success: true,
+    method: 'direct',
+    message: `Siap dikirim ke WhatsApp Wali (${targetPhone}). Klik buka WhatsApp jika belum terbuka.`,
+    url: directUrl,
+  };
+}
+
