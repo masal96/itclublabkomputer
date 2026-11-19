@@ -17,7 +17,7 @@ import {
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import config from '../../firebase-applet-config.json';
-import { Student, AttendanceRecord, ScheduleItem, PortfolioItem, ActivityEvent, StudentAssessment } from '../types';
+import { Student, AttendanceRecord, ScheduleItem, PortfolioItem, ActivityEvent, StudentAssessment, PembinaCardProfile } from '../types';
 import { WhatsAppGatewayConfig } from '../utils/whatsapp';
 import { 
   INITIAL_STUDENTS, 
@@ -635,6 +635,39 @@ export function subscribeToAssessments(
     return () => {};
   }
 }
+
+// ==========================================
+// 8. KARTU KHUSUS PEMBINA (TERPISAH DARI DATA ANGGOTA)
+// ==========================================
+export async function getPembinaCardFromFirestore(): Promise<PembinaCardProfile | null> {
+  try {
+    const docRef = doc(db, 'settings', 'pembina_card');
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      return snap.data() as PembinaCardProfile;
+    }
+  } catch (err) {
+    console.warn('[Firestore] Error fetching pembina card profile:', err);
+  }
+  return null;
+}
+
+export async function savePembinaCardToFirestore(profile: PembinaCardProfile): Promise<void> {
+  try {
+    const docRef = doc(db, 'settings', 'pembina_card');
+    const payload = sanitizeForFirestore({
+      ...profile,
+      id: 'pembina_card',
+      updatedAt: new Date().toISOString(),
+    });
+    await setDoc(docRef, payload, { merge: true });
+    console.log('[Firestore] Pembina card profile saved to server (without modifying students).');
+  } catch (err) {
+    console.error('[Firestore] Failed to save pembina card profile:', err);
+    throw err;
+  }
+}
+
 
 
 

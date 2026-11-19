@@ -187,7 +187,7 @@ export const JoinClubModal: React.FC<JoinClubModalProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-slate-300 mb-1">
-                    NISN
+                    NIS
                   </label>
                   <input
                     type="text"
@@ -282,7 +282,7 @@ export const JoinClubModal: React.FC<JoinClubModalProps> = ({
                   {registeredCard.name}
                 </div>
                 <div className="text-xs text-slate-300 font-mono">
-                  NISN: {registeredCard.nisn} · {registeredCard.class}
+                  NIS: {registeredCard.nisn} · {registeredCard.class}
                 </div>
                 <div className="flex items-center justify-between pt-2 border-t border-slate-800 text-xs">
                   <span className="px-2 py-0.5 rounded bg-violet-950 text-violet-300 border border-violet-500/40 text-[10px]">

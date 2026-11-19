@@ -126,3 +126,17 @@ export interface StudentAssessment {
   waSentAt?: string;
   updatedAt: string;
 }
+
+export interface PembinaCardProfile {
+  id: string;
+  name: string;
+  nip: string;
+  roleTitle: string;
+  unit: string;
+  rfidUid: string;
+  qrCodeData: string;
+  avatarUrl: string;
+  email: string;
+  phone: string;
+  updatedAt?: string;
+}

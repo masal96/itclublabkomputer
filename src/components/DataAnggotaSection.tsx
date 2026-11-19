@@ -168,7 +168,7 @@ export const DataAnggotaSection: React.FC<DataAnggotaSectionProps> = ({
     if (!studentToEdit) return;
 
     if (!editName.trim() || !editNisn.trim()) {
-      showToast('error', 'Nama lengkap dan NISN wajib diisi.');
+      showToast('error', 'Nama lengkap dan NIS wajib diisi.');
       return;
     }
 
@@ -236,13 +236,13 @@ export const DataAnggotaSection: React.FC<DataAnggotaSectionProps> = ({
   const handleSaveAdd = (e: React.FormEvent) => {
     e.preventDefault();
     if (!addName.trim() || !addNisn.trim()) {
-      showToast('error', 'Nama lengkap dan NISN wajib diisi.');
+      showToast('error', 'Nama lengkap dan NIS wajib diisi.');
       return;
     }
 
-    // Check NISN duplicate
+    // Check NIS duplicate
     if (students.some((s) => s.nisn === addNisn.trim())) {
-      showToast('error', `NISN ${addNisn} sudah terdaftar dalam sistem.`);
+      showToast('error', `NIS ${addNisn} sudah terdaftar dalam sistem.`);
       return;
     }
 
@@ -290,7 +290,7 @@ export const DataAnggotaSection: React.FC<DataAnggotaSectionProps> = ({
     const headers = [
       'ID',
       'Nama Lengkap',
-      'NISN',
+      'NIS',
       'Kelas',
       'Divisi Spesialisasi',
       'Status',
@@ -372,7 +372,7 @@ export const DataAnggotaSection: React.FC<DataAnggotaSectionProps> = ({
           </h2>
 
           <p className="text-slate-300 max-w-xl mx-auto text-sm sm:text-base mb-8 leading-relaxed">
-            Halaman manajemen <strong>Data Anggota IT Club</strong> yang berisi privasi siswa (NISN, kontak, RFID UID, serta hak akses untuk <strong>Edit dan Hapus Anggota</strong>) hanya dapat diakses oleh <strong>Guru Pembimbing Lab Komputer</strong>.
+            Halaman manajemen <strong>Data Anggota IT Club</strong> yang berisi privasi siswa (NIS, kontak, RFID UID, serta hak akses untuk <strong>Edit dan Hapus Anggota</strong>) hanya dapat diakses oleh <strong>Guru Pembimbing Lab Komputer</strong>.
           </p>
 
           <button
@@ -503,7 +503,7 @@ export const DataAnggotaSection: React.FC<DataAnggotaSectionProps> = ({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Cari nama siswa, NISN, kelas, nomor HP, atau UID RFID..."
+            placeholder="Cari nama siswa, NIS, kelas, nomor HP, atau UID RFID..."
             className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 transition-colors"
           />
         </div>
@@ -620,7 +620,7 @@ export const DataAnggotaSection: React.FC<DataAnggotaSectionProps> = ({
                       {student.name}
                     </h4>
                     <p className="text-xs text-slate-300 font-mono truncate">
-                      NISN: {student.nisn}
+                      NIS: {student.nisn}
                     </p>
                     <p className="text-xs text-slate-400 truncate">
                       {student.class}
@@ -723,7 +723,7 @@ export const DataAnggotaSection: React.FC<DataAnggotaSectionProps> = ({
               <thead className="bg-[#080c16] text-slate-400 font-mono uppercase tracking-wider border-b border-slate-800">
                 <tr>
                   <th className="px-4 py-3">Siswa</th>
-                  <th className="px-4 py-3">Kelas &amp; NISN</th>
+                  <th className="px-4 py-3">Kelas &amp; NIS</th>
                   <th className="px-4 py-3">Divisi Spesialisasi</th>
                   <th className="px-4 py-3">Wali Murid (WA)</th>
                   <th className="px-4 py-3">RFID UID</th>
@@ -750,7 +750,7 @@ export const DataAnggotaSection: React.FC<DataAnggotaSectionProps> = ({
                     </td>
                     <td className="px-4 py-3 text-slate-300">
                       <div>{s.class}</div>
-                      <div className="text-[10px] text-slate-500 font-mono">NISN: {s.nisn}</div>
+                      <div className="text-[10px] text-slate-500 font-mono">NIS: {s.nisn}</div>
                     </td>
                     <td className="px-4 py-3">
                       <span className="px-2 py-0.5 rounded text-[11px] font-mono bg-cyan-950/70 text-cyan-300 border border-cyan-800/50">
@@ -985,7 +985,7 @@ export const DataAnggotaSection: React.FC<DataAnggotaSectionProps> = ({
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    NISN (Nomor Induk Siswa Nasional) *
+                    NIS (Nomor Induk Siswa) *
                   </label>
                   <input
                     type="text"
@@ -1317,7 +1317,7 @@ export const DataAnggotaSection: React.FC<DataAnggotaSectionProps> = ({
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    NISN (Nomor Induk Siswa Nasional) *
+                    NIS (Nomor Induk Siswa) *
                   </label>
                   <input
                     type="text"
@@ -1508,7 +1508,7 @@ export const DataAnggotaSection: React.FC<DataAnggotaSectionProps> = ({
             </h3>
 
             <p className="text-xs text-slate-300 text-center mb-4 leading-relaxed">
-              Tindakan ini akan menghapus siswa <span className="font-bold text-white">"{studentToDelete.name}"</span> (NISN: {studentToDelete.nisn}) dari seluruh basis data anggota, riwayat cetak kartu, dan RFID lab komputer.
+              Tindakan ini akan menghapus siswa <span className="font-bold text-white">"{studentToDelete.name}"</span> (NIS: {studentToDelete.nisn}) dari seluruh basis data anggota, riwayat cetak kartu, dan RFID lab komputer.
             </p>
 
             <div className="p-3 rounded-xl bg-red-950/30 border border-red-500/30 text-[11px] text-red-300 mb-6 flex items-start gap-2">

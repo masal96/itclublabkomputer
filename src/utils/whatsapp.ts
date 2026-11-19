@@ -59,7 +59,7 @@ Yth. ${parentSalutation},
 Kami menginformasikan bahwa siswa telah berhasil melakukan presensi kehadiran di Laboratorium Komputer sekolah dengan rincian berikut:
 
 👤 *Nama Siswa:* ${student.name}
-🆔 *NISN:* ${student.nisn}
+🆔 *NIS:* ${student.nisn}
 📚 *Kelas:* ${student.class}
 💻 *Divisi:* ${student.division}
 
@@ -393,7 +393,7 @@ Yth. ${parentSalutation},
 Berikut adalah ringkasan hasil evaluasi kegiatan ekstrakurikuler *IT Club & Laboratorium Komputer* untuk periode *${assessment.period}*:
 
 👤 *Nama Siswa:* ${assessment.studentName}
-🆔 *NISN:* ${assessment.nisn}
+🆔 *NIS:* ${assessment.nisn}
 📚 *Kelas:* ${assessment.class}
 💻 *Divisi:* ${assessment.division}
 
@@ -412,7 +412,7 @@ _${assessment.coachNotes || '-'}_
 💡 *Rekomendasi:*
 ${assessment.recommendation || '-'}
 
-Laporan lengkap beserta rincian presensi dapat diakses oleh orang tua/wali melalui menu *Penilaian* di portal web IT Club dengan memasukkan NISN ananda (*${assessment.nisn}*).
+Laporan lengkap beserta rincian presensi dapat diakses oleh orang tua/wali melalui menu *Penilaian* di portal web IT Club dengan memasukkan NIS ananda (*${assessment.nisn}*).
 
 _Hormat kami,_
 *${assessment.instructorName || 'Tim Pembina IT Club'}*

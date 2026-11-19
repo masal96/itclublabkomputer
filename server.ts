@@ -224,7 +224,7 @@ Yth. ${parentSalutation},
 Kami menginformasikan bahwa siswa telah berhasil melakukan presensi kehadiran di Laboratorium Komputer sekolah dengan rincian berikut:
 
 👤 *Nama Siswa:* ${student.name}
-🆔 *NISN:* ${student.nisn}
+🆔 *NIS:* ${student.nisn}
 📚 *Kelas:* ${student.class}
 💻 *Divisi:* ${student.division}
 
@@ -414,14 +414,14 @@ app.get('/api/students', async (req: Request, res: Response) => {
     });
 
     const rfidParam = String(req.query.rfid || req.query.uid || '').trim();
-    const nisnParam = String(req.query.nisn || '').trim();
+    const nisParam = String(req.query.nis || req.query.nisn || '').trim();
 
     if (rfidParam) {
       const normalizedQuery = normalizeRfidUid(rfidParam);
       list = list.filter((s) => normalizeRfidUid(s.rfidUid || '') === normalizedQuery);
     }
-    if (nisnParam) {
-      list = list.filter((s) => String(s.nisn) === nisnParam);
+    if (nisParam) {
+      list = list.filter((s) => String(s.nisn) === nisParam);
     }
 
     res.json({
@@ -710,12 +710,12 @@ app.get('/api/assessments', async (req: Request, res: Response) => {
       list.push(d.data() as Record<string, unknown>);
     });
 
-    const nisnParam = String(req.query.nisn || '').trim();
+    const nisParam = String(req.query.nis || req.query.nisn || '').trim();
     const studentIdParam = String(req.query.studentId || '').trim();
     const onlyPublished = req.query.published === 'true';
 
-    if (nisnParam) {
-      list = list.filter((a) => String(a.nisn || '').trim() === nisnParam);
+    if (nisParam) {
+      list = list.filter((a) => String(a.nisn || '').trim() === nisParam);
     }
     if (studentIdParam) {
       list = list.filter((a) => String(a.studentId || '').trim() === studentIdParam);

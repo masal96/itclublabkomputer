@@ -210,7 +210,7 @@ export const DaftarAnggotaSection: React.FC<DaftarAnggotaSectionProps> = ({
   const handleExportCSV = () => {
     const headers = [
       'No',
-      'NISN',
+      'NIS',
       'Nama Lengkap',
       'Kelas',
       'Divisi',
@@ -472,7 +472,7 @@ export const DaftarAnggotaSection: React.FC<DaftarAnggotaSectionProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Cari berdasarkan nama, NISN, kelas, rfid uid, atau jabatan..."
+              placeholder="Cari berdasarkan nama, NIS, kelas, rfid uid, atau jabatan..."
               className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900/90 border border-slate-800 text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50 transition-all"
             />
             {searchQuery && (
@@ -672,7 +672,7 @@ export const DaftarAnggotaSection: React.FC<DaftarAnggotaSectionProps> = ({
                   {/* Details Badges */}
                   <div className="space-y-2 mb-4 bg-slate-900/70 p-3 rounded-xl border border-slate-800/80 text-xs">
                     <div className="flex items-center justify-between">
-                      <span className="text-slate-400 font-mono text-[11px]">NISN:</span>
+                      <span className="text-slate-400 font-mono text-[11px]">NIS:</span>
                       <span className="text-slate-200 font-mono font-semibold">{std.nisn}</span>
                     </div>
 
@@ -748,7 +748,7 @@ export const DaftarAnggotaSection: React.FC<DaftarAnggotaSectionProps> = ({
               <thead className="bg-[#080d19] border-b border-slate-800 text-slate-400 uppercase tracking-wider font-mono">
                 <tr>
                   <th className="py-3.5 px-4">Siswa</th>
-                  <th className="py-3.5 px-4">NISN &amp; Kelas</th>
+                  <th className="py-3.5 px-4">NIS &amp; Kelas</th>
                   <th className="py-3.5 px-4">Divisi</th>
                   <th className="py-3.5 px-4">RFID UID</th>
                   <th className="py-3.5 px-4">Presensi</th>
@@ -970,7 +970,7 @@ export const DaftarAnggotaSection: React.FC<DaftarAnggotaSectionProps> = ({
 
                     <div className="grid grid-cols-2 gap-2 pt-2 text-[11px] font-mono">
                       <div>
-                        <span className="text-slate-400 block text-[10px]">NISN:</span>
+                        <span className="text-slate-400 block text-[10px]">NIS:</span>
                         <span className="text-slate-100 font-bold">{selectedStudentForDetail.nisn}</span>
                       </div>
                       <div>
@@ -1152,7 +1152,7 @@ export const DaftarAnggotaSection: React.FC<DaftarAnggotaSectionProps> = ({
 
                 <div>
                   <label className="block text-slate-300 font-semibold mb-1">
-                    NISN (Nomor Induk Siswa) <span className="text-red-400">*</span>
+                    NIS (Nomor Induk Siswa) <span className="text-red-400">*</span>
                   </label>
                   <input
                     type="text"
@@ -1336,7 +1336,7 @@ export const DaftarAnggotaSection: React.FC<DaftarAnggotaSectionProps> = ({
 
             <p className="text-sm text-slate-300 mb-6">
               Apakah Anda yakin ingin menghapus data anggota{' '}
-              <strong className="text-white font-bold">{studentToDelete.name}</strong> (NISN:{' '}
+              <strong className="text-white font-bold">{studentToDelete.name}</strong> (NIS:{' '}
               {studentToDelete.nisn}) dari database IT Club?
             </p>
 

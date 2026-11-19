@@ -26,10 +26,22 @@ import {
   Image as ImageIcon,
   Trash2,
   Edit3,
-  AlertTriangle
+  AlertTriangle,
+  Award,
+  Save,
+  RefreshCw
 } from 'lucide-react';
-import { Student, AdminUser, DivisionType } from '../types';
-import { generateFrontCardImage, generateBackCardImage } from '../utils/cardCanvas';
+import { Student, AdminUser, DivisionType, PembinaCardProfile } from '../types';
+import {
+  generateFrontCardImage,
+  generateBackCardImage,
+  generatePembinaFrontCardImage,
+  generatePembinaBackCardImage,
+} from '../utils/cardCanvas';
+import {
+  getPembinaCardFromFirestore,
+  savePembinaCardToFirestore,
+} from '../services/firebase';
 
 interface CardStudioSectionProps {
   admin: AdminUser;
@@ -48,9 +60,12 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
   onDeleteStudent,
   onOpenAdminModal,
 }) => {
+  const [cardMode, setCardMode] = useState<'siswa' | 'pembina'>('siswa');
   const [selectedStudent, setSelectedStudent] = useState<Student>(students[0]);
   const [isFlipped, setIsFlipped] = useState(false);
+  const [isPembinaFlipped, setIsPembinaFlipped] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
+  const [pembinaQrDataUrl, setPembinaQrDataUrl] = useState<string>('');
   const [showNewCardModal, setShowNewCardModal] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [showEditCardModal, setShowEditCardModal] = useState(false);
@@ -59,7 +74,38 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
 
   const [printLayout, setPrintLayout] = useState<'both' | 'front_only' | 'batch_all'>('both');
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isSavingPembina, setIsSavingPembina] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState<string | null>(null);
+  const [errorToast, setErrorToast] = useState<string | null>(null);
+
+  const [pembinaProfile, setPembinaProfile] = useState<PembinaCardProfile>(() => {
+    const fallbackName = admin.name || 'Dwi Ambal Aziz, S.Kom';
+    const fallbackNip = admin.nip || '19920514 201903 1 008';
+    const defaults: PembinaCardProfile = {
+      id: 'pembina_card',
+      name: fallbackName,
+      nip: fallbackNip,
+      roleTitle: 'Pembina Lab & IT Club',
+      unit: 'SMP Lab Komputer Terpadu',
+      rfidUid: 'PMB-9901-01',
+      qrCodeData: `ITCLUB:PEMBINA:${fallbackNip}:${fallbackName}`,
+      avatarUrl:
+        admin.avatar ||
+        'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&auto=format&fit=crop&q=80',
+      email: admin.email || 'pembina@itclub.sch.id',
+      phone: '0812-0000-1992',
+    };
+    try {
+      const saved = localStorage.getItem('itclub_pembina_card');
+      if (saved) {
+        return { ...defaults, ...JSON.parse(saved) };
+      }
+    } catch {
+      // ignore localStorage error
+    }
+    return defaults;
+  });
+  const pembinaFileRef = useRef<HTMLInputElement | null>(null);
 
   // New Student Form State
   const [newName, setNewName] = useState('');
@@ -113,13 +159,64 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
     { id: 'av-6', label: 'Siswi 3', url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=300&auto=format&fit=crop&q=80' },
   ];
 
-  const handleImageFile = (file: File, target: 'selected' | 'new' | 'edit') => {
+  // Load Pembina profile separately from Firestore (never modifies students collection)
+  useEffect(() => {
+    let active = true;
+    getPembinaCardFromFirestore()
+      .then((cloudProfile) => {
+        if (active && cloudProfile) {
+          setPembinaProfile((prev) => {
+            const merged = { ...prev, ...cloudProfile };
+            try {
+              localStorage.setItem('itclub_pembina_card', JSON.stringify(merged));
+            } catch {
+              // ignore storage error
+            }
+            return merged;
+          });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Generate QR for Pembina Card
+  useEffect(() => {
+    const qrPayload =
+      pembinaProfile.qrCodeData ||
+      `ITCLUB:PEMBINA:${pembinaProfile.nip}:${pembinaProfile.name}`;
+    QRCode.toDataURL(qrPayload, {
+      width: 180,
+      margin: 1,
+      color: {
+        dark: '#080c16',
+        light: '#ffffff',
+      },
+    })
+      .then((url) => setPembinaQrDataUrl(url))
+      .catch((err) => console.error(err));
+  }, [pembinaProfile.qrCodeData, pembinaProfile.nip, pembinaProfile.name]);
+
+  const showSuccessToast = (msg: string) => {
+    setErrorToast(null);
+    setDownloadSuccess(msg);
+    setTimeout(() => setDownloadSuccess(null), 4000);
+  };
+
+  const showErrorMessage = (msg: string) => {
+    setErrorToast(msg);
+    setTimeout(() => setErrorToast(null), 4000);
+  };
+
+  const handleImageFile = (file: File, target: 'selected' | 'new' | 'edit' | 'pembina') => {
     if (!file.type.startsWith('image/')) {
-      alert('Pilih file format gambar (JPG, PNG, WebP).');
+      showErrorMessage('Pilih file format gambar (JPG, PNG, WebP).');
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      alert('Ukuran gambar maksimal 5MB.');
+      showErrorMessage('Ukuran gambar maksimal 5MB.');
       return;
     }
     const reader = new FileReader();
@@ -129,15 +226,108 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
         const updated = { ...selectedStudent, avatarUrl: dataUrl };
         setSelectedStudent(updated);
         onUpdateStudent?.(updated);
-        setDownloadSuccess(`Foto profil ${selectedStudent.name} berhasil diperbarui.`);
-        setTimeout(() => setDownloadSuccess(null), 3500);
+        showSuccessToast(`Foto profil ${selectedStudent.name} berhasil diperbarui.`);
       } else if (target === 'edit') {
         setEditAvatarUrl(dataUrl);
+      } else if (target === 'pembina') {
+        const updatedPembina: PembinaCardProfile = {
+          ...pembinaProfile,
+          avatarUrl: dataUrl,
+          updatedAt: new Date().toISOString(),
+        };
+        setPembinaProfile(updatedPembina);
+        try {
+          localStorage.setItem('itclub_pembina_card', JSON.stringify(updatedPembina));
+        } catch {
+          // ignore
+        }
+        savePembinaCardToFirestore(updatedPembina).catch(() => {});
+        showSuccessToast('Foto profil Kartu Khusus Pembina berhasil diperbarui.');
       } else {
         setNewAvatarUrl(dataUrl);
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleSavePembinaProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pembinaProfile.name.trim() || !pembinaProfile.nip.trim()) {
+      showErrorMessage('Nama Pembina dan NIP wajib diisi.');
+      return;
+    }
+    setIsSavingPembina(true);
+    const updated: PembinaCardProfile = {
+      ...pembinaProfile,
+      name: pembinaProfile.name.trim(),
+      nip: pembinaProfile.nip.trim(),
+      roleTitle: pembinaProfile.roleTitle.trim() || 'Pembina Lab & IT Club',
+      unit: pembinaProfile.unit.trim() || 'SMP Lab Komputer Terpadu',
+      rfidUid: pembinaProfile.rfidUid.trim() || 'PMB-9901-01',
+      email: pembinaProfile.email.trim() || 'pembina@itclub.sch.id',
+      qrCodeData: `ITCLUB:PEMBINA:${pembinaProfile.nip.trim()}:${pembinaProfile.name.trim()}`,
+      updatedAt: new Date().toISOString(),
+    };
+    setPembinaProfile(updated);
+    try {
+      localStorage.setItem('itclub_pembina_card', JSON.stringify(updated));
+    } catch {
+      // ignore
+    }
+    try {
+      await savePembinaCardToFirestore(updated);
+      showSuccessToast(
+        'Profil Kartu Khusus Pembina berhasil disimpan terpisah tanpa mengubah data anggota siswa.'
+      );
+    } catch {
+      showSuccessToast(
+        'Profil Kartu Pembina tersimpan di perangkat ini (sinkronisasi server tertunda).'
+      );
+    } finally {
+      setIsSavingPembina(false);
+    }
+  };
+
+  const handleDownloadPembinaCard = async (side: 'front' | 'back' | 'both') => {
+    setIsDownloading(true);
+    setDownloadSuccess(null);
+    try {
+      const safeName = pembinaProfile.name.replace(/\s+/g, '_');
+      if (side === 'front' || side === 'both') {
+        const frontUrl = await generatePembinaFrontCardImage(pembinaProfile);
+        const link = document.createElement('a');
+        link.download = `Kartu_Pembina_Depan_${safeName}.png`;
+        link.href = frontUrl;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+
+      if (side === 'back' || side === 'both') {
+        const downloadBack = async () => {
+          const backUrl = await generatePembinaBackCardImage(pembinaProfile);
+          const link = document.createElement('a');
+          link.download = `Kartu_Pembina_Belakang_${safeName}.png`;
+          link.href = backUrl;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        };
+        if (side === 'both') {
+          setTimeout(downloadBack, 300);
+        } else {
+          await downloadBack();
+        }
+      }
+      showSuccessToast(
+        `Kartu Khusus Pembina (${pembinaProfile.name}) berhasil diunduh dalam format PNG HD.`
+      );
+    } catch (err) {
+      console.error(err);
+      showErrorMessage('Gagal mengunduh gambar Kartu Pembina.');
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   // Open Edit Card Modal
@@ -378,7 +568,7 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          {admin.isAuthenticated && (
+          {cardMode === 'siswa' && admin.isAuthenticated && (
             <button
               onClick={() => setShowNewCardModal(true)}
               className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 text-slate-950 text-xs font-bold hover:opacity-90 transition-all shadow-md shadow-cyan-500/20"
@@ -390,23 +580,72 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
 
           <button
             onClick={() => handleTriggerPrint('both')}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold transition-all shadow-md shadow-cyan-500/30"
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-slate-950 text-xs font-bold transition-all shadow-md ${
+              cardMode === 'pembina'
+                ? 'bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 shadow-amber-500/25'
+                : 'bg-cyan-500 hover:bg-cyan-400 shadow-cyan-500/30'
+            }`}
           >
             <Printer className="w-4 h-4" />
-            <span>Lembar Cetak (Print Sheet)</span>
+            <span>
+              {cardMode === 'pembina' ? 'Cetak Kartu Pembina' : 'Lembar Cetak (Print Sheet)'}
+            </span>
           </button>
 
-          <button
-            onClick={() => handleTriggerPrint('batch_all')}
-            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold transition-all"
-          >
-            <FileText className="w-4 h-4 text-teal-400" />
-            <span>Cetak Masal (Semua)</span>
-          </button>
+          {cardMode === 'siswa' && (
+            <button
+              onClick={() => handleTriggerPrint('batch_all')}
+              className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold transition-all"
+            >
+              <FileText className="w-4 h-4 text-teal-400" />
+              <span>Cetak Masal (Semua)</span>
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Download Alert Toast */}
+      {/* Mode Switcher: Kartu Anggota Siswa vs Kartu Khusus Pembina */}
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-2xl bg-[#0b1120] border border-slate-800">
+        <div className="inline-flex p-1 rounded-xl bg-slate-950 border border-slate-800 w-full sm:w-auto">
+          <button
+            type="button"
+            onClick={() => setCardMode('siswa')}
+            className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+              cardMode === 'siswa'
+                ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <User className="w-3.5 h-3.5" />
+            <span>Kartu Anggota Siswa ({students.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setCardMode('pembina')}
+            className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+              cardMode === 'pembina'
+                ? 'bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 shadow-md shadow-amber-500/20'
+                : 'text-slate-400 hover:text-amber-300'
+            }`}
+          >
+            <Award className="w-3.5 h-3.5" />
+            <span>Kartu Khusus Pembina</span>
+          </button>
+        </div>
+
+        <div className="text-[11px] font-mono text-slate-400 px-2">
+          {cardMode === 'pembina' ? (
+            <span className="text-amber-300">
+              Mode Pembina · Tersimpan terpisah, data {students.length} anggota siswa tidak berubah
+            </span>
+          ) : (
+            <span>Standar CR80 (85.6 × 53.98 mm) · RFID 13.56MHz + QR Code</span>
+          )}
+        </div>
+      </div>
+
+      {/* Download / Status Alert Toasts */}
       {downloadSuccess && (
         <div className="mb-6 p-4 rounded-xl bg-emerald-950/80 border border-emerald-500/50 text-emerald-200 text-xs flex items-center gap-3 animate-fadeIn">
           <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
@@ -414,6 +653,426 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
         </div>
       )}
 
+      {errorToast && (
+        <div className="mb-6 p-4 rounded-xl bg-red-950/80 border border-red-500/50 text-red-200 text-xs flex items-center gap-3 animate-fadeIn">
+          <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
+          <span>{errorToast}</span>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* MODE PEMBINA: KARTU KHUSUS PEMBINA (TERPISAH DARI DATA ANGGOTA)       */}
+      {/* ===================================================================== */}
+      {cardMode === 'pembina' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* Left: Form Editor Profil Pembina */}
+          <div className="lg:col-span-4 space-y-4">
+            <div className="rounded-2xl bg-[#0b1120] border border-amber-500/35 p-5 shadow-xl">
+              <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/40 flex items-center justify-center text-amber-400">
+                    <Award className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white">Profil Kartu Pembina</h3>
+                    <p className="text-[10px] font-mono text-amber-300">
+                      Data terpisah dari daftar anggota
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <form onSubmit={handleSavePembinaProfile} className="space-y-3.5 text-xs">
+                {/* Photo upload */}
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center gap-3">
+                  <img
+                    src={pembinaProfile.avatarUrl}
+                    alt={pembinaProfile.name}
+                    className="w-14 h-16 rounded-xl object-cover border-2 border-amber-400/80 shrink-0"
+                    referrerPolicy="no-referrer"
+                  />
+                  <div className="flex-1 min-w-0 space-y-1.5">
+                    <div className="text-[11px] font-semibold text-slate-200">
+                      Foto Profil Pembina
+                    </div>
+                    <input
+                      ref={pembinaFileRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleImageFile(file, 'pembina');
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => pembinaFileRef.current?.click()}
+                      className="w-full py-1.5 px-2.5 rounded-lg border border-dashed border-amber-500/60 bg-amber-950/20 hover:bg-amber-950/40 text-amber-300 text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Unggah / Ganti Foto</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                    Nama Lengkap &amp; Gelar *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={pembinaProfile.name}
+                    onChange={(e) =>
+                      setPembinaProfile({ ...pembinaProfile, name: e.target.value })
+                    }
+                    placeholder="Dwi Ambal Aziz, S.Kom"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                    NIP / Nomor Induk Pegawai *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={pembinaProfile.nip}
+                    onChange={(e) =>
+                      setPembinaProfile({ ...pembinaProfile, nip: e.target.value })
+                    }
+                    placeholder="19920514 201903 1 008"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono text-white focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                    Jabatan / Otoritas
+                  </label>
+                  <input
+                    type="text"
+                    value={pembinaProfile.roleTitle}
+                    onChange={(e) =>
+                      setPembinaProfile({ ...pembinaProfile, roleTitle: e.target.value })
+                    }
+                    placeholder="Pembina Lab & IT Club"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-amber-200 focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                    Unit / Sekolah
+                  </label>
+                  <input
+                    type="text"
+                    value={pembinaProfile.unit}
+                    onChange={(e) =>
+                      setPembinaProfile({ ...pembinaProfile, unit: e.target.value })
+                    }
+                    placeholder="SMP Lab Komputer Terpadu"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-300 mb-1 flex items-center justify-between">
+                      <span>RFID UID Pembina</span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPembinaProfile({
+                            ...pembinaProfile,
+                            rfidUid: `PMB-${Math.floor(1000 + Math.random() * 8999)}-${Math.floor(
+                              10 + Math.random() * 89
+                            )}`,
+                          })
+                        }
+                        className="text-[10px] text-amber-400 hover:text-amber-300 font-mono flex items-center gap-0.5"
+                      >
+                        <RefreshCw className="w-2.5 h-2.5" /> Acak
+                      </button>
+                    </label>
+                    <input
+                      type="text"
+                      value={pembinaProfile.rfidUid}
+                      onChange={(e) =>
+                        setPembinaProfile({ ...pembinaProfile, rfidUid: e.target.value })
+                      }
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono text-amber-300 focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                      Email Resmi
+                    </label>
+                    <input
+                      type="email"
+                      value={pembinaProfile.email}
+                      onChange={(e) =>
+                        setPembinaProfile({ ...pembinaProfile, email: e.target.value })
+                      }
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSavingPembina}
+                  className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 text-xs font-bold transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 disabled:opacity-60"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>
+                    {isSavingPembina ? 'Menyimpan...' : 'Simpan Profil Kartu Pembina'}
+                  </span>
+                </button>
+              </form>
+            </div>
+          </div>
+
+          {/* Right: Live Interactive Preview Kartu Khusus Pembina */}
+          <div className="lg:col-span-8 space-y-6">
+            {/* Toolbar */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setIsPembinaFlipped(!isPembinaFlipped)}
+                className="flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-amber-500/40 text-xs font-medium text-amber-200 transition-colors"
+              >
+                <RotateCw className="w-3.5 h-3.5 text-amber-400" />
+                <span>
+                  Balik Kartu: {isPembinaFlipped ? 'Sisi Belakang' : 'Sisi Depan'}
+                </span>
+              </button>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleDownloadPembinaCard('front')}
+                  disabled={isDownloading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-amber-500/40 text-xs font-medium text-amber-300 hover:text-white transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Unduh Depan</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDownloadPembinaCard('back')}
+                  disabled={isDownloading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-medium text-slate-300 hover:text-white transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Unduh Belakang</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Live Card Preview Container */}
+            <div className="flex flex-col items-center justify-center p-6 sm:p-10 rounded-3xl bg-slate-950/80 border border-amber-500/25">
+              {/* PHYSICAL PEMBINA ID CARD MOCKUP */}
+              <div className="relative w-full max-w-[490px] aspect-[1.586/1] rounded-2xl p-6 shadow-2xl shadow-amber-950/30 select-none overflow-hidden border-2 border-amber-500/70 bg-gradient-to-br from-[#090714] via-[#070b18] to-[#161108]">
+                <div className="absolute -right-10 -bottom-10 w-60 h-60 bg-gradient-to-tl from-amber-500/15 via-yellow-500/5 to-transparent rounded-full blur-2xl pointer-events-none" />
+                <div className="absolute top-0 right-0 w-36 h-36 bg-violet-600/10 blur-xl pointer-events-none" />
+
+                {!isPembinaFlipped ? (
+                  /* PEMBINA FRONT SIDE */
+                  <div className="h-full flex flex-col justify-between relative z-10 text-white">
+                    <div className="flex items-start justify-between border-b border-amber-500/35 pb-2.5">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-amber-500 flex items-center justify-center text-slate-950 font-black text-sm shadow-md shadow-amber-500/30">
+                          ★
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-extrabold tracking-wider text-white uppercase">
+                            KARTU KHUSUS PEMBINA IT CLUB &amp; LAB
+                          </h4>
+                          <p className="text-[9px] font-mono text-amber-300 font-bold">
+                            &lt;AdministratorLab/&gt; · OTORITAS RESMI
+                          </p>
+                        </div>
+                      </div>
+                      <div className="px-2 py-0.5 rounded text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-400/50">
+                        TA 2026/2027
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-4 my-auto">
+                      <div
+                        className="relative shrink-0 group/photo cursor-pointer"
+                        onClick={() => pembinaFileRef.current?.click()}
+                        title="Klik untuk mengganti foto Pembina"
+                      >
+                        <img
+                          src={pembinaProfile.avatarUrl}
+                          alt={pembinaProfile.name}
+                          className="w-20 h-24 rounded-xl object-cover border-2 border-amber-400 shadow-md transition-opacity group-hover/photo:opacity-75"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="absolute inset-0 rounded-xl bg-slate-950/75 opacity-0 group-hover/photo:opacity-100 flex flex-col items-center justify-center transition-opacity text-[9px] font-mono text-amber-300">
+                          <Camera className="w-4 h-4 mb-0.5" />
+                          <span>Ganti Foto</span>
+                        </div>
+                      </div>
+
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <h3 className="text-sm sm:text-base font-extrabold text-white truncate leading-tight">
+                          {pembinaProfile.name}
+                        </h3>
+                        <div className="text-[11px] font-mono text-slate-300 truncate">
+                          NIP: <span className="text-white font-bold">{pembinaProfile.nip}</span>
+                        </div>
+                        <div className="text-[11px] text-slate-300 truncate">
+                          Unit: <span className="text-amber-200">{pembinaProfile.unit}</span>
+                        </div>
+                        <div className="pt-1 flex flex-wrap items-center gap-1.5">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/50">
+                            {pembinaProfile.roleTitle}
+                          </span>
+                          <span className="text-[10px] font-mono text-sky-300">
+                            RFID: {pembinaProfile.rfidUid}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="shrink-0 flex flex-col items-center">
+                        <div className="p-1.5 bg-white rounded-lg shadow-md border border-amber-300">
+                          {pembinaQrDataUrl ? (
+                            <img
+                              src={pembinaQrDataUrl}
+                              alt="QR Pembina"
+                              className="w-16 h-16 sm:w-20 sm:h-20"
+                            />
+                          ) : (
+                            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-slate-100 flex items-center justify-center">
+                              <QrCode className="w-8 h-8 text-slate-400" />
+                            </div>
+                          )}
+                        </div>
+                        <span className="text-[8px] font-mono text-amber-300 mt-1 uppercase font-bold">
+                          Otoritas Pembina
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between border-t border-amber-500/25 pt-2 text-[10px] font-mono">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-4 rounded bg-amber-400/25 border border-amber-400/70 flex items-center justify-center">
+                          <div className="w-4 h-2 border border-amber-300/70 grid grid-cols-2 gap-0.5 p-0.5">
+                            <span className="bg-amber-300/60 rounded-[1px]" />
+                            <span className="bg-amber-300/60 rounded-[1px]" />
+                          </div>
+                        </div>
+                        <span className="text-amber-300 font-bold tracking-wider text-[9px]">
+                          MASTER ACCESS · PEMBINA LAB
+                        </span>
+                      </div>
+                      <div className="text-amber-400 font-bold text-[9px]">
+                        ADMIN PENUH
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* PEMBINA BACK SIDE */
+                  <div className="h-full flex flex-col justify-between relative z-10 text-white text-xs">
+                    <div>
+                      <div className="flex items-center justify-between border-b border-amber-500/30 pb-2 mb-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300">
+                          Otoritas &amp; Tugas Pembina Laboratorium Komputer
+                        </span>
+                        <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                      </div>
+
+                      <ol className="text-[9px] sm:text-[10px] text-slate-300 space-y-1.5 list-decimal pl-4 leading-snug">
+                        <li>Pemegang otoritas akses penuh ruang Laboratorium Komputer &amp; server lokal.</li>
+                        <li>Berwenang memvalidasi pendaftaran anggota, kartu RFID, dan data penilaian siswa.</li>
+                        <li>Mengelola jadwal praktikum, workshop, serta publikasi portofolio karya siswa.</li>
+                        <li>Melakukan audit berkala perangkat keras, jaringan, dan keamanan workstation.</li>
+                        <li>Kontak darurat &amp; penanggung jawab utama operasional kegiatan IT Club sekolah.</li>
+                      </ol>
+                    </div>
+
+                    <div className="bg-white p-2 rounded-lg flex flex-col items-center">
+                      <div className="w-full h-7 flex items-center justify-between gap-[2px] overflow-hidden">
+                        {Array.from({ length: 44 }).map((_, i) => (
+                          <div
+                            key={i}
+                            className="bg-black h-full"
+                            style={{
+                              width: `${i % 3 === 0 ? 3 : i % 2 === 0 ? 1 : 2}px`,
+                            }}
+                          />
+                        ))}
+                      </div>
+                      <span className="text-[8px] font-mono text-black font-bold tracking-widest mt-0.5">
+                        *{pembinaProfile.nip}*
+                      </span>
+                    </div>
+
+                    <div className="flex items-end justify-between border-t border-amber-500/25 pt-1.5 text-[9px]">
+                      <div className="text-slate-400">
+                        <div>{pembinaProfile.unit}</div>
+                        <div className="text-[8px] text-amber-300 font-mono">{pembinaProfile.email}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-semibold text-white">{pembinaProfile.name}</div>
+                        <div className="text-[8px] text-amber-300">{pembinaProfile.roleTitle}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Action buttons below card */}
+              <div className="mt-6 flex flex-wrap items-center justify-center gap-3 no-print">
+                <button
+                  type="button"
+                  onClick={() => pembinaFileRef.current?.click()}
+                  className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-amber-500/40 text-xs font-semibold text-amber-300 hover:text-white transition-all flex items-center gap-2"
+                >
+                  <Camera className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Ganti Foto Pembina</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsPembinaFlipped(!isPembinaFlipped)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-xs font-semibold text-slate-200 hover:text-white transition-all flex items-center gap-2"
+                >
+                  <RotateCw className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Balik Kartu ({isPembinaFlipped ? 'Sisi Depan' : 'Sisi Belakang'})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleTriggerPrint('both')}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 text-xs font-bold hover:opacity-95 transition-all shadow-md shadow-amber-500/20 flex items-center gap-2"
+                >
+                  <Printer className="w-3.5 h-3.5 text-slate-950" />
+                  <span>Buka Lembar Cetak Pembina</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleDownloadPembinaCard('both')}
+                  disabled={isDownloading}
+                  className="px-4 py-2.5 rounded-xl bg-slate-900 border border-amber-500/40 text-amber-300 hover:text-white text-xs font-semibold transition-all flex items-center gap-2 disabled:opacity-50"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Unduh Depan &amp; Belakang (PNG)</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cardMode === 'siswa' && (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         
         {/* Left: Student Selector List */}
@@ -453,7 +1112,7 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
                       <div className="min-w-0 flex-1">
                         <div className="text-xs font-bold truncate">{student.name}</div>
                         <div className="text-[11px] text-slate-400 font-mono truncate">
-                          NISN: {student.nisn} · {student.division}
+                          NIS: {student.nisn} · {student.division}
                         </div>
                         <div className="text-[10px] text-cyan-400 font-mono mt-0.5">
                           RFID: {student.rfidUid}
@@ -626,7 +1285,7 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
                         {selectedStudent?.name}
                       </h3>
                       <div className="text-[11px] font-mono text-slate-300">
-                        NISN: <span className="text-white font-bold">{selectedStudent?.nisn}</span>
+                        NIS: <span className="text-white font-bold">{selectedStudent?.nisn}</span>
                       </div>
                       <div className="text-[11px] text-slate-300">
                         Kelas: <span className="text-cyan-300">{selectedStudent?.class}</span>
@@ -819,6 +1478,7 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
         </div>
 
       </div>
+      )}
 
       {/* FULL PRINT PREVIEW & SHEET MODAL */}
       {showPrintModal && (
@@ -833,7 +1493,9 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
                   <span>Pratinjau Lembar Siap Cetak (A4 Standard)</span>
                 </h3>
                 <p className="text-xs text-slate-400">
-                  {printLayout === 'batch_all' 
+                  {cardMode === 'pembina'
+                    ? `Mencetak Kartu Khusus Pembina: ${pembinaProfile.name}`
+                    : printLayout === 'batch_all' 
                     ? `Mencetak seluruh anggota (${students.length} Siswa)` 
                     : `Mencetak Kartu Siswa: ${selectedStudent.name}`}
                 </p>
@@ -849,7 +1511,11 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
                 </button>
 
                 <button
-                  onClick={() => handleDownloadCard('both')}
+                  onClick={() =>
+                    cardMode === 'pembina'
+                      ? handleDownloadPembinaCard('both')
+                      : handleDownloadCard('both')
+                  }
                   className="px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-200 hover:text-white text-xs font-semibold flex items-center gap-2"
                 >
                   <Download className="w-4 h-4 text-cyan-400" />
@@ -876,8 +1542,124 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
             {/* THE PRINTABLE SHEET CANVAS */}
             <div id="printable-card-area" className="bg-slate-100 dark:bg-slate-950 p-4 sm:p-8 rounded-xl border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-white">
               
+              {/* LAYOUT: PEMBINA CARD BOTH SIDES */}
+              {cardMode === 'pembina' && (
+                <div>
+                  <div className="text-center mb-4 text-xs font-mono text-amber-500 uppercase tracking-widest no-print">
+                    ✂ Garis Potong Kartu Khusus Pembina CR80 (85.6mm × 53.98mm)
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center justify-center">
+                    {/* PEMBINA SISI DEPAN */}
+                    <div className="space-y-1.5">
+                      <span className="text-[11px] font-mono font-bold text-amber-400 block text-center no-print">
+                        [SISI DEPAN — PEMBINA]
+                      </span>
+                      <div className="print-card-box relative w-full aspect-[1.586/1] rounded-2xl p-5 shadow-lg border-2 border-amber-500/70 bg-gradient-to-br from-[#090714] via-[#070b18] to-[#161108] text-white flex flex-col justify-between overflow-hidden">
+                        <div className="flex items-start justify-between border-b border-amber-500/35 pb-2">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-md bg-amber-500 flex items-center justify-center font-black text-xs text-slate-950">
+                              ★
+                            </div>
+                            <div>
+                              <h4 className="text-[11px] font-extrabold tracking-wider uppercase">
+                                KARTU KHUSUS PEMBINA
+                              </h4>
+                              <p className="text-[8px] font-mono text-amber-300 font-bold">
+                                &lt;AdministratorLab/&gt;
+                              </p>
+                            </div>
+                          </div>
+                          <span className="text-[8px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-400/40">
+                            TA 2026/2027
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-3 my-auto">
+                          <img
+                            src={pembinaProfile.avatarUrl}
+                            alt={pembinaProfile.name}
+                            className="w-16 h-20 rounded-lg object-cover border border-amber-400 shadow-sm"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div className="min-w-0 flex-1 space-y-0.5">
+                            <h3 className="text-xs font-extrabold text-white truncate">
+                              {pembinaProfile.name}
+                            </h3>
+                            <div className="text-[10px] font-mono text-slate-300 truncate">
+                              NIP: {pembinaProfile.nip}
+                            </div>
+                            <div className="text-[10px] text-amber-200 truncate">
+                              {pembinaProfile.roleTitle}
+                            </div>
+                            <div className="text-[9px] text-sky-300 font-mono pt-0.5">
+                              RFID: {pembinaProfile.rfidUid}
+                            </div>
+                          </div>
+                          <div className="p-1 bg-white rounded-md shrink-0">
+                            {pembinaQrDataUrl && (
+                              <img src={pembinaQrDataUrl} alt="QR" className="w-14 h-14" />
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between border-t border-amber-500/25 pt-1.5 text-[9px] font-mono">
+                          <span className="text-amber-300 font-bold tracking-wider">
+                            MASTER ACCESS LAB
+                          </span>
+                          <span className="text-slate-400">ADMIN PENUH</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* PEMBINA SISI BELAKANG */}
+                    <div className="space-y-1.5">
+                      <span className="text-[11px] font-mono font-bold text-amber-400 block text-center no-print">
+                        [SISI BELAKANG — PEMBINA]
+                      </span>
+                      <div className="print-card-box relative w-full aspect-[1.586/1] rounded-2xl p-5 shadow-lg border-2 border-amber-500/70 bg-gradient-to-br from-[#120d1e] via-[#090d1a] to-[#191206] text-white flex flex-col justify-between overflow-hidden">
+                        <div>
+                          <div className="text-[9px] font-bold text-amber-300 uppercase border-b border-amber-500/30 pb-1 mb-1.5">
+                            OTORITAS &amp; TUGAS PEMBINA LAB KOMPUTER
+                          </div>
+                          <ol className="text-[8px] text-slate-300 space-y-1 list-decimal pl-3.5">
+                            <li>Pemegang otoritas akses penuh ruang Lab Komputer &amp; server lokal.</li>
+                            <li>Berwenang memvalidasi pendaftaran anggota, RFID, dan nilai siswa.</li>
+                            <li>Mengelola jadwal praktikum, workshop, serta portofolio karya.</li>
+                            <li>Audit berkala perangkat keras, jaringan, dan keamanan PC.</li>
+                            <li>Penanggung jawab utama operasional kegiatan IT Club sekolah.</li>
+                          </ol>
+                        </div>
+
+                        <div className="bg-white p-1 rounded flex flex-col items-center">
+                          <div className="w-full h-5 flex items-center justify-between gap-[2px]">
+                            {Array.from({ length: 36 }).map((_, i) => (
+                              <div
+                                key={i}
+                                className="bg-black h-full"
+                                style={{ width: `${i % 3 === 0 ? 3 : 1}px` }}
+                              />
+                            ))}
+                          </div>
+                          <span className="text-[7px] font-mono text-black font-bold tracking-widest">
+                            *{pembinaProfile.nip}*
+                          </span>
+                        </div>
+
+                        <div className="flex items-end justify-between border-t border-amber-500/25 pt-1 text-[8px]">
+                          <span className="text-slate-400">{pembinaProfile.unit}</span>
+                          <div className="text-right">
+                            <div className="font-semibold text-white">{pembinaProfile.name}</div>
+                            <div className="text-amber-300">{pembinaProfile.roleTitle}</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* LAYOUT: SINGLE STUDENT BOTH SIDES (FRONT + BACK) */}
-              {printLayout === 'both' && (
+              {cardMode === 'siswa' && printLayout === 'both' && (
                 <div>
                   <div className="text-center mb-4 text-xs font-mono text-slate-500 uppercase tracking-widest no-print">
                     ✂ Garis Potong Standard ID Card CR80 (85.6mm × 53.98mm)
@@ -925,7 +1707,7 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
                               {selectedStudent.name}
                             </h3>
                             <div className="text-[10px] font-mono text-slate-300">
-                              NISN  : {selectedStudent.nisn}
+                              NIS   : {selectedStudent.nisn}
                             </div>
                             <div className="text-[10px] text-slate-300">
                               Kelas : {selectedStudent.class}
@@ -1006,7 +1788,7 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
               )}
 
               {/* LAYOUT: BATCH PRINT ALL STUDENTS */}
-              {printLayout === 'batch_all' && (
+              {cardMode === 'siswa' && printLayout === 'batch_all' && (
                 <div className="space-y-4">
                   <div className="text-center text-xs font-mono text-slate-500 mb-2 no-print">
                     Lembar Cetak Masal Kartu Anggota IT Club (Grid 2 Kolom)
@@ -1026,7 +1808,7 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
                         />
                         <div className="min-w-0 flex-1 space-y-0.5">
                           <div className="text-xs font-bold text-white truncate">{std.name}</div>
-                          <div className="text-[10px] font-mono text-slate-300">NISN: {std.nisn}</div>
+                          <div className="text-[10px] font-mono text-slate-300">NIS: {std.nisn}</div>
                           <div className="text-[10px] text-cyan-300">{std.class} · {std.division}</div>
                           <div className="text-[9px] font-mono text-teal-400 pt-1">ID: #{std.id.toUpperCase()}</div>
                         </div>
@@ -1195,7 +1977,7 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-slate-300 mb-1">
-                    NISN (Nomor Induk)
+                    NIS (Nomor Induk)
                   </label>
                   <input
                     type="text"
@@ -1484,7 +2266,7 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-slate-300 mb-1">
-                    NISN (Nomor Induk)
+                    NIS (Nomor Induk)
                   </label>
                   <input
                     type="text"
@@ -1672,7 +2454,7 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
                   {studentToDelete.name}
                 </div>
                 <div className="text-xs font-mono text-slate-400 truncate">
-                  NISN: {studentToDelete.nisn} · {studentToDelete.class}
+                  NIS: {studentToDelete.nisn} · {studentToDelete.class}
                 </div>
                 <div className="text-[11px] font-mono text-cyan-400 mt-0.5">
                   UID RFID: {studentToDelete.rfidUid}

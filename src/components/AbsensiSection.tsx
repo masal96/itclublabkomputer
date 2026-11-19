@@ -610,7 +610,7 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
 
   // Export Attendance to CSV
   const handleExportCsv = () => {
-    const headers = ['ID', 'Waktu', 'Tipe', 'Nama Siswa', 'NISN', 'Kelas', 'Divisi', 'Metode', 'Status', 'No. WA Wali', 'Notifikasi WA', 'Catatan'];
+    const headers = ['ID', 'Waktu', 'Tipe', 'Nama Siswa', 'NIS', 'Kelas', 'Divisi', 'Metode', 'Status', 'No. WA Wali', 'Notifikasi WA', 'Catatan'];
     const rows = attendanceRecords.map((r) => [
       r.id,
       new Date(r.timestamp).toLocaleString('id-ID'),
@@ -867,13 +867,15 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
 
         {/* Time Simulator Control */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2.5 bg-slate-950/80 p-2.5 rounded-xl border border-slate-800">
-          <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
-            <Clock className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Jam Aktif:</span>
-            <span className="font-mono font-bold text-white">
-              {simulatedTime ? `${simulatedTime} WIB (Simulasi)` : 'Waktu Riil'}
-            </span>
-          </div>
+          {simulatedTime && (
+            <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Simulasi:</span>
+              <span className="font-mono font-bold text-white">
+                {simulatedTime} WIB
+              </span>
+            </div>
+          )}
 
           <div className="flex items-center gap-1">
             <button
@@ -1398,7 +1400,7 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
                     {lastScannedStudent.student.name}
                   </h4>
                   <p className="text-xs text-slate-300 font-mono">
-                    NISN: {lastScannedStudent.student.nisn}
+                    NIS: {lastScannedStudent.student.nisn}
                   </p>
                   <p className="text-xs text-cyan-300">
                     {lastScannedStudent.student.class}
@@ -1534,7 +1536,7 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Cari nama, kelas, atau NISN siswa..."
+                    placeholder="Cari nama, kelas, atau NIS siswa..."
                     className="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
                   />
                 </div>
@@ -1742,7 +1744,7 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
                         </td>
                         <td className="px-4 py-3 font-semibold text-white">
                           <div>{item.studentName}</div>
-                          <div className="text-[10px] text-slate-500 font-mono">NISN: {item.nisn}</div>
+                          <div className="text-[10px] text-slate-500 font-mono">NIS: {item.nisn}</div>
                         </td>
                         <td className="px-4 py-3 text-slate-300">
                           <div>{item.class}</div>
