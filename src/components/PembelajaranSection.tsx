@@ -61,9 +61,9 @@ export const PembelajaranSection: React.FC<PembelajaranSectionProps> = ({ module
                 <div className="w-12 h-12 rounded-xl bg-cyan-950/80 border border-cyan-500/30 flex items-center justify-center text-cyan-300 group-hover:scale-110 transition-transform">
                   {mod.track === 'C# .NET' && <Code className="w-6 h-6 text-cyan-400" />}
                   {mod.track === 'Python Programming' && <Terminal className="w-6 h-6 text-emerald-400" />}
-                  {mod.track === 'Scratch' && <Play className="w-6 h-6 text-teal-400" />}
+                  {mod.track === 'Scratch/Pictoblox' && <Play className="w-6 h-6 text-teal-400" />}
                   {mod.track === 'Desain Grafis' && <Monitor className="w-6 h-6 text-violet-400" />}
-                  {mod.track === 'Jaringan Komputer' && <Cpu className="w-6 h-6 text-sky-400" />}
+                  {mod.track === 'Robotika & IoT' && <Cpu className="w-6 h-6 text-sky-400" />}
                 </div>
 
                 <div className="flex items-center gap-2">

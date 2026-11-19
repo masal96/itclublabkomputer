@@ -82,6 +82,8 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
 
   const [manualUid, setManualUid] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [filterDate, setFilterDate] = useState<string>('');
+  const [attendanceView, setAttendanceView] = useState<'logs' | 'recap'>('logs');
   const [filterStatus, setFilterStatus] = useState<'all' | 'Hadir' | 'Terlambat' | 'Masuk' | 'Pulang'>('all');
   const [lastScannedStudent, setLastScannedStudent] = useState<{
     student: Student;
@@ -642,8 +644,51 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
       matchStatus = rec.tapType === 'Pulang';
     }
 
-    return matchQuery && matchStatus;
+    let matchDate = true;
+    if (filterDate) {
+      const d = new Date(rec.timestamp);
+      const localYmd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      matchDate = localYmd === filterDate;
+    }
+
+    return matchQuery && matchStatus && matchDate;
   });
+
+  // Per-student attendance recap summary
+  const studentRecapList = students
+    .map((s) => {
+      const logs = attendanceRecords.filter((r) => {
+        const belongs = r.studentId === s.id || r.nisn === s.nisn;
+        if (!belongs) return false;
+        if (!filterDate) return true;
+        const d = new Date(r.timestamp);
+        const localYmd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        return localYmd === filterDate;
+      });
+      const masuk = logs.filter((r) => r.tapType === 'Masuk' || !r.tapType).length;
+      const pulang = logs.filter((r) => r.tapType === 'Pulang').length;
+      const hadir = logs.filter((r) => r.status === 'Hadir').length;
+      const terlambat = logs.filter((r) => r.status === 'Terlambat').length;
+      const onTimePct = logs.length > 0 ? Math.round((hadir / logs.length) * 100) : 0;
+      return {
+        student: s,
+        total: logs.length,
+        masuk,
+        pulang,
+        hadir,
+        terlambat,
+        onTimePct,
+      };
+    })
+    .filter((row) => {
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase();
+      return (
+        row.student.name.toLowerCase().includes(q) ||
+        row.student.nisn.includes(searchQuery) ||
+        row.student.class.toLowerCase().includes(q)
+      );
+    });
 
   // Calculate statistics
   const totalHadir = attendanceRecords.filter((r) => r.status === 'Hadir').length;
@@ -1459,67 +1504,171 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
           {/* Table Container */}
           <div className="rounded-2xl bg-[#0b1120] border border-slate-800 overflow-hidden shadow-xl">
             
-            {/* Table Header Filter & Search */}
-            <div className="p-4 sm:p-5 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#0a0f1d]">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Cari nama, kelas, atau NISN siswa..."
-                  className="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
-                />
+            {/* Table Header Filter, Date Filter & View Switcher */}
+            <div className="p-4 sm:p-5 border-b border-slate-800 space-y-3 bg-[#0a0f1d]">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Cari nama, kelas, atau NISN siswa..."
+                    className="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                  />
+                </div>
+
+                {/* Date Filter + View Toggle */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-cyan-400" />
+                    <input
+                      type="date"
+                      value={filterDate}
+                      onChange={(e) => setFilterDate(e.target.value)}
+                      className="bg-transparent text-xs font-mono text-slate-200 focus:outline-none"
+                      title="Filter berdasarkan tanggal"
+                    />
+                    {filterDate && (
+                      <button
+                        type="button"
+                        onClick={() => setFilterDate('')}
+                        className="text-slate-400 hover:text-white text-[10px] font-mono px-1"
+                        title="Tampilkan semua tanggal"
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="inline-flex p-0.5 rounded-xl bg-slate-950 border border-slate-800 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setAttendanceView('logs')}
+                      className={`px-2.5 py-1 rounded-lg font-semibold transition-colors ${
+                        attendanceView === 'logs'
+                          ? 'bg-cyan-500/20 text-cyan-300'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Log Tap
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAttendanceView('recap')}
+                      className={`px-2.5 py-1 rounded-lg font-semibold transition-colors ${
+                        attendanceView === 'recap'
+                          ? 'bg-violet-500/20 text-violet-300'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Rekap Siswa
+                    </button>
+                  </div>
+                </div>
               </div>
 
-              {/* Status Segmented Filter */}
-              <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-950 rounded-xl border border-slate-800">
-                <button
-                  onClick={() => setFilterStatus('all')}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-colors ${
-                    filterStatus === 'all'
-                      ? 'bg-cyan-500/20 text-cyan-300 font-bold'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Semua ({attendanceRecords.length})
-                </button>
-                <button
-                  onClick={() => setFilterStatus('Masuk')}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-colors flex items-center gap-1 ${
-                    filterStatus === 'Masuk'
-                      ? 'bg-emerald-500/20 text-emerald-300 font-bold'
-                      : 'text-slate-400 hover:text-emerald-300'
-                  }`}
-                >
-                  <LogIn className="w-3 h-3" />
-                  <span>Masuk</span>
-                </button>
-                <button
-                  onClick={() => setFilterStatus('Pulang')}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-colors flex items-center gap-1 ${
-                    filterStatus === 'Pulang'
-                      ? 'bg-blue-500/20 text-blue-300 font-bold'
-                      : 'text-slate-400 hover:text-blue-300'
-                  }`}
-                >
-                  <LogOut className="w-3 h-3" />
-                  <span>Pulang</span>
-                </button>
-                <button
-                  onClick={() => setFilterStatus('Terlambat')}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-colors ${
-                    filterStatus === 'Terlambat'
-                      ? 'bg-amber-500/20 text-amber-300 font-bold'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Terlambat
-                </button>
-              </div>
+              {/* Status Segmented Filter (when in logs view) */}
+              {attendanceView === 'logs' && (
+                <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-950 rounded-xl border border-slate-800 w-fit">
+                  <button
+                    onClick={() => setFilterStatus('all')}
+                    className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-colors ${
+                      filterStatus === 'all'
+                        ? 'bg-cyan-500/20 text-cyan-300 font-bold'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Semua ({filteredRecords.length})
+                  </button>
+                  <button
+                    onClick={() => setFilterStatus('Masuk')}
+                    className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-colors flex items-center gap-1 ${
+                      filterStatus === 'Masuk'
+                        ? 'bg-emerald-500/20 text-emerald-300 font-bold'
+                        : 'text-slate-400 hover:text-emerald-300'
+                    }`}
+                  >
+                    <LogIn className="w-3 h-3" />
+                    <span>Masuk</span>
+                  </button>
+                  <button
+                    onClick={() => setFilterStatus('Pulang')}
+                    className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-colors flex items-center gap-1 ${
+                      filterStatus === 'Pulang'
+                        ? 'bg-blue-500/20 text-blue-300 font-bold'
+                        : 'text-slate-400 hover:text-blue-300'
+                    }`}
+                  >
+                    <LogOut className="w-3 h-3" />
+                    <span>Pulang</span>
+                  </button>
+                  <button
+                    onClick={() => setFilterStatus('Terlambat')}
+                    className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-colors ${
+                      filterStatus === 'Terlambat'
+                        ? 'bg-amber-500/20 text-amber-300 font-bold'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Terlambat
+                  </button>
+                </div>
+              )}
             </div>
 
-            {/* Attendance Table */}
+            {attendanceView === 'recap' ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-[#080c16] text-slate-400 font-mono uppercase tracking-wider border-b border-slate-800">
+                    <tr>
+                      <th className="px-4 py-3">Siswa</th>
+                      <th className="px-4 py-3">Divisi</th>
+                      <th className="px-4 py-3 text-center">Masuk</th>
+                      <th className="px-4 py-3 text-center">Pulang</th>
+                      <th className="px-4 py-3 text-center">Terlambat</th>
+                      <th className="px-4 py-3 text-right">Ketepatan Waktu</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {studentRecapList.map((row) => (
+                      <tr key={row.student.id} className="hover:bg-slate-900/50 transition-colors">
+                        <td className="px-4 py-3">
+                          <div className="font-semibold text-white">{row.student.name}</div>
+                          <div className="text-[10px] font-mono text-slate-400">
+                            {row.student.nisn} · {row.student.class}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-cyan-300">{row.student.division}</td>
+                        <td className="px-4 py-3 text-center font-mono tabular-nums text-emerald-300">
+                          {row.masuk}
+                        </td>
+                        <td className="px-4 py-3 text-center font-mono tabular-nums text-blue-300">
+                          {row.pulang}
+                        </td>
+                        <td className="px-4 py-3 text-center font-mono tabular-nums text-amber-300">
+                          {row.terlambat}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono tabular-nums font-bold">
+                          <span
+                            className={
+                              row.total === 0
+                                ? 'text-slate-500'
+                                : row.onTimePct >= 80
+                                ? 'text-emerald-300'
+                                : 'text-amber-300'
+                            }
+                          >
+                            {row.total === 0 ? '-' : `${row.onTimePct}% (${row.hadir}/${row.total})`}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+            /* Attendance Table */
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead className="bg-[#080c16] text-slate-400 font-mono uppercase tracking-wider border-b border-slate-800">
@@ -1648,10 +1797,15 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
                 </tbody>
               </table>
             </div>
+            )}
 
             {/* Table Footer */}
             <div className="p-3 bg-[#080d1a] border-t border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
-              <span>Menampilkan {filteredRecords.length} rekaman presensi hari ini</span>
+              <span>
+                {attendanceView === 'recap'
+                  ? `Menampilkan rekap kehadiran ${studentRecapList.length} siswa`
+                  : `Menampilkan ${filteredRecords.length} rekaman presensi${filterDate ? ` pada ${filterDate}` : ''}`}
+              </span>
               <span className="font-mono text-emerald-400 flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                 <span>Cloud Firestore Database Terkoneksi (Real-time Sync)</span>

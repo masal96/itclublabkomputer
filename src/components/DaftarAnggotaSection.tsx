@@ -1194,9 +1194,9 @@ export const DaftarAnggotaSection: React.FC<DaftarAnggotaSectionProps> = ({
                   >
                     <option value="Python Programming">Python Programming</option>
                     <option value="C# .NET">C# .NET</option>
-                    <option value="Scratch">Scratch</option>
+                    <option value="Scratch/Pictoblox">Scratch/Pictoblox</option>
                     <option value="Desain Grafis">Desain Grafis</option>
-                    <option value="Jaringan Komputer">Jaringan Komputer</option>
+                    <option value="Robotika & IoT">Robotika &amp; IoT</option>
                   </select>
                 </div>
               </div>

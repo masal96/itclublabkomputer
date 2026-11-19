@@ -23,6 +23,7 @@ import {
   Lock,
   Calendar,
   Wrench,
+  Download,
 } from 'lucide-react';
 import {
   AdminUser,
@@ -163,6 +164,199 @@ export const PenilaianSection: React.FC<PenilaianSectionProps> = ({
   } | null>(null);
 
   const [sendingWaId, setSendingWaId] = useState<string | null>(null);
+  const [certificateReport, setCertificateReport] = useState<StudentAssessment | null>(null);
+
+  const handleDownloadCertificatePng = (report: StudentAssessment) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1600;
+    canvas.height = 1130;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const drawRoundedRect = (
+      x: number,
+      y: number,
+      w: number,
+      h: number,
+      r: number
+    ) => {
+      const radius = Math.min(r, w / 2, h / 2);
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.lineTo(x + w - radius, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+      ctx.lineTo(x + w, y + h - radius);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+      ctx.lineTo(x + radius, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+      ctx.lineTo(x, y + radius);
+      ctx.quadraticCurveTo(x, y, x + radius, y);
+      ctx.closePath();
+    };
+
+    // Dark elegant tech certificate backdrop
+    const grad = ctx.createLinearGradient(0, 0, 1600, 1130);
+    grad.addColorStop(0, '#070b14');
+    grad.addColorStop(0.5, '#0b1426');
+    grad.addColorStop(1, '#091020');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 1600, 1130);
+
+    // Subtle grid lines
+    ctx.strokeStyle = 'rgba(6, 182, 212, 0.06)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x <= 1600; x += 40) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, 1130);
+      ctx.stroke();
+    }
+    for (let y = 0; y <= 1130; y += 40) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(1600, y);
+      ctx.stroke();
+    }
+
+    // Outer & Inner Ornamental Borders
+    ctx.strokeStyle = '#06b6d4';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(42, 42, 1516, 1046);
+    ctx.strokeStyle = 'rgba(20, 184, 166, 0.45)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(60, 60, 1480, 1010);
+
+    // Header Badge (measured dynamically so text always fits with clean padding)
+    const badgeText = 'IT CLUB & LAB KOMPUTER SEKOLAH';
+    ctx.font = 'bold 20px monospace';
+    ctx.textAlign = 'center';
+    const badgeWidth = Math.max(520, Math.ceil(ctx.measureText(badgeText).width) + 96);
+    const badgeX = 800 - badgeWidth / 2;
+    drawRoundedRect(badgeX, 110, badgeWidth, 48, 8);
+    ctx.fillStyle = '#0f2942';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(6, 182, 212, 0.6)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.fillStyle = '#67e8f9';
+    ctx.fillText(badgeText, 800, 141, badgeWidth - 40);
+
+    // Main Title
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 64px sans-serif';
+    ctx.fillText('SERTIFIKAT KOMPETENSI', 800, 245);
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '24px monospace';
+    ctx.fillText(`NO. REG: CERT-${report.nisn}-${report.assessmentDate.replace(/-/g, '')}`, 800, 292);
+
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = '26px sans-serif';
+    ctx.fillText('Diberikan dengan bangga kepada:', 800, 380);
+
+    // Student Name (auto-fit font size for long names)
+    const upperName = report.studentName.toUpperCase();
+    let nameFontSize = 58;
+    ctx.font = `bold ${nameFontSize}px sans-serif`;
+    while (ctx.measureText(upperName).width > 1220 && nameFontSize > 36) {
+      nameFontSize -= 2;
+      ctx.font = `bold ${nameFontSize}px sans-serif`;
+    }
+    const measuredNameWidth = ctx.measureText(upperName).width;
+    ctx.fillStyle = '#22d3ee';
+    ctx.fillText(upperName, 800, 460, 1280);
+
+    // Accent underline matching name width cleanly
+    const lineHalf = Math.min(580, Math.max(260, Math.ceil(measuredNameWidth / 2) + 70));
+    ctx.strokeStyle = '#14b8a6';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(800 - lineHalf, 485);
+    ctx.lineTo(800 + lineHalf, 485);
+    ctx.stroke();
+
+    // Student Identity
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = '26px sans-serif';
+    ctx.fillText(`NISN: ${report.nisn}   ·   ${report.class}`, 800, 535);
+
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = '25px sans-serif';
+    ctx.fillText('Telah menyelesaikan program pelatihan & praktikum IT Club pada Divisi:', 800, 610);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 38px sans-serif';
+    ctx.fillText(report.division, 800, 665, 1300);
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '23px sans-serif';
+    ctx.fillText(
+      `${report.period}  |  Karya Utama: ${report.projectTitle || '-'}`,
+      800,
+      718,
+      1340
+    );
+
+    // Score & Grade Box (dynamically sized to prevent text overflow)
+    const scoreLine = `NILAI AKHIR: ${report.finalScore}/100  ·  PREDIKAT ${report.grade}`;
+    const predicateLine = report.predicate || '';
+
+    const gradeColorMap: Record<string, { border: string; text: string; bg: string }> = {
+      A: { border: '#10b981', text: '#6ee7b7', bg: '#071a18' },
+      B: { border: '#06b6d4', text: '#67e8f9', bg: '#081726' },
+      C: { border: '#f59e0b', text: '#fcd34d', bg: '#1c1508' },
+      D: { border: '#f43f5e', text: '#fda4af', bg: '#1e0b14' },
+    };
+    const palette = gradeColorMap[report.grade] || gradeColorMap.A;
+
+    ctx.font = 'bold 30px monospace';
+    const scoreTextWidth = ctx.measureText(scoreLine).width;
+    ctx.font = '20px sans-serif';
+    const predTextWidth = ctx.measureText(predicateLine).width;
+
+    const maxContentWidth = Math.max(scoreTextWidth, predTextWidth);
+    const boxWidth = Math.min(1320, Math.max(760, Math.ceil(maxContentWidth) + 140));
+    const boxHeight = 108;
+    const boxX = Math.round(800 - boxWidth / 2);
+    const boxY = 756;
+
+    drawRoundedRect(boxX, boxY, boxWidth, boxHeight, 14);
+    ctx.fillStyle = palette.bg;
+    ctx.fill();
+    ctx.strokeStyle = palette.border;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    ctx.fillStyle = palette.text;
+    ctx.font = 'bold 30px monospace';
+    ctx.fillText(scoreLine, 800, boxY + 46, boxWidth - 64);
+
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = '20px sans-serif';
+    ctx.fillText(predicateLine, 800, boxY + 82, boxWidth - 64);
+
+    // Signatures
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '20px sans-serif';
+    ctx.fillText('Tanggal Evaluasi', 160, 935);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 24px monospace';
+    ctx.fillText(report.assessmentDate, 160, 975);
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '20px sans-serif';
+    ctx.fillText('Pembina Laboratorium Komputer & IT Club', 1440, 935);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 26px sans-serif';
+    ctx.fillText(report.instructorName || 'Pembina IT Club', 1440, 1008);
+
+    const link = document.createElement('a');
+    link.download = `E-Sertifikat_ITClub_${report.studentName.replace(/\s+/g, '_')}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  };
 
   // Modal state for Add / Edit Assessment
   const [modalOpen, setModalOpen] = useState<boolean>(false);
@@ -651,6 +845,14 @@ export const PenilaianSection: React.FC<PenilaianSectionProps> = ({
                   </button>
                   <button
                     type="button"
+                    onClick={() => setCertificateReport(activeReport)}
+                    className="px-4 py-2.5 rounded-xl bg-violet-600 text-white text-xs font-bold hover:bg-violet-500 transition-colors flex items-center gap-2"
+                  >
+                    <Award className="w-4 h-4" />
+                    E-Sertifikat
+                  </button>
+                  <button
+                    type="button"
                     onClick={handleCopySummary}
                     className="px-3.5 py-2.5 rounded-xl bg-slate-800/80 border border-slate-700 text-slate-200 text-xs font-semibold hover:bg-slate-700 transition-colors flex items-center gap-1.5"
                   >
@@ -1055,9 +1257,9 @@ export const PenilaianSection: React.FC<PenilaianSectionProps> = ({
               >
                 <option value="Semua">Semua Divisi</option>
                 <option value="C# .NET">C# .NET</option>
-                <option value="Scratch">Scratch</option>
+                <option value="Scratch/Pictoblox">Scratch/Pictoblox</option>
                 <option value="Desain Grafis">Desain Grafis</option>
-                <option value="Jaringan Komputer">Jaringan Komputer</option>
+                <option value="Robotika & IoT">Robotika &amp; IoT</option>
                 <option value="Python Programming">Python Programming</option>
               </select>
 
@@ -1537,6 +1739,109 @@ export const PenilaianSection: React.FC<PenilaianSectionProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================
+          MODAL E-SERTIFIKAT DIGITAL IT CLUB
+         ============================================================ */}
+      {certificateReport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
+          <div className="w-full max-w-3xl rounded-2xl bg-[#0b1120] border border-cyan-500/40 shadow-2xl overflow-hidden my-6">
+            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-[#080c16]">
+              <div className="flex items-center gap-2.5">
+                <Award className="w-5 h-5 text-cyan-400" />
+                <div>
+                  <h3 className="text-base font-bold text-white">
+                    E-Sertifikat Kompetensi IT Club
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Piagam digital resmi untuk anggota &amp; orang tua/wali murid
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCertificateReport(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6">
+              {/* Visual Certificate Preview */}
+              <div className="relative p-6 sm:p-10 rounded-xl bg-gradient-to-br from-[#070b14] via-[#0d1629] to-[#080e1d] border-2 border-cyan-500/50 text-center space-y-4 overflow-hidden">
+                <div className="text-[11px] font-mono uppercase tracking-[0.25em] text-cyan-300">
+                  IT Club &amp; Laboratorium Komputer Sekolah
+                </div>
+                <h4 className="text-2xl sm:text-3xl font-black tracking-wide text-white">
+                  SERTIFIKAT KOMPETENSI
+                </h4>
+                <div className="text-xs font-mono text-slate-400 tabular-nums">
+                  NO. REG: CERT-{certificateReport.nisn}-
+                  {certificateReport.assessmentDate.replace(/-/g, '')}
+                </div>
+
+                <p className="text-xs sm:text-sm text-slate-300 pt-2">
+                  Diberikan dengan bangga kepada:
+                </p>
+                <div className="text-2xl sm:text-3xl font-extrabold text-cyan-300 border-b border-teal-500/40 pb-2 inline-block px-6">
+                  {certificateReport.studentName}
+                </div>
+                <div className="text-xs text-slate-300 font-mono tabular-nums">
+                  NISN: {certificateReport.nisn} · {certificateReport.class}
+                </div>
+
+                <p className="text-xs sm:text-sm text-slate-300 pt-2">
+                  Telah menyelesaikan program pelatihan &amp; praktikum Divisi{' '}
+                  <strong className="text-white">{certificateReport.division}</strong>
+                </p>
+                <div className="text-xs text-slate-400">
+                  {certificateReport.period} | Karya Utama: {certificateReport.projectTitle || '-'}
+                </div>
+
+                <div
+                  className={`inline-block px-6 py-3.5 rounded-xl border ${
+                    getGradeInfo(certificateReport.finalScore).accentClass
+                  }`}
+                >
+                  <div className="text-sm sm:text-base font-mono font-bold tabular-nums">
+                    NILAI AKHIR: {certificateReport.finalScore}/100 · PREDIKAT{' '}
+                    {certificateReport.grade}
+                  </div>
+                  <div className="text-xs text-slate-300 mt-0.5">
+                    {certificateReport.predicate}
+                  </div>
+                </div>
+
+                <div className="pt-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400 border-t border-slate-800/80">
+                  <span>Evaluasi: {certificateReport.assessmentDate}</span>
+                  <span>
+                    Pembina: <strong className="text-slate-200">{certificateReport.instructorName}</strong>
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-5 flex flex-wrap items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setCertificateReport(null)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700"
+                >
+                  Tutup
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDownloadCertificatePng(certificateReport)}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-teal-400 text-slate-950 text-xs font-extrabold hover:opacity-95 flex items-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  Unduh E-Sertifikat (PNG HD)
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -1233,9 +1233,9 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
                 >
                   <option value="Python Programming">Python Programming (AI, Data &amp; Otomasi)</option>
                   <option value="C# .NET">C# .NET (Software Engineering)</option>
-                  <option value="Scratch">Scratch (Game &amp; Logic)</option>
+                  <option value="Scratch/Pictoblox">Scratch / Pictoblox (Game &amp; Logic)</option>
                   <option value="Desain Grafis">Desain Grafis &amp; UI/UX</option>
-                  <option value="Jaringan Komputer">Jaringan Komputer &amp; Server</option>
+                  <option value="Robotika & IoT">Robotika &amp; IoT</option>
                 </select>
               </div>
 
@@ -1521,9 +1521,9 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
                   >
                     <option value="Python Programming">Python Programming (AI, Data &amp; Otomasi)</option>
                     <option value="C# .NET">C# .NET (Software Engineering)</option>
-                    <option value="Scratch">Scratch (Game &amp; Logic)</option>
+                    <option value="Scratch/Pictoblox">Scratch / Pictoblox (Game &amp; Logic)</option>
                     <option value="Desain Grafis">Desain Grafis &amp; UI/UX</option>
-                    <option value="Jaringan Komputer">Jaringan Komputer &amp; Server</option>
+                    <option value="Robotika & IoT">Robotika &amp; IoT</option>
                   </select>
                 </div>
 

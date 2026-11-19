@@ -70,18 +70,18 @@
       "properties": {
         "id": { "type": "string" },
         "title": { "type": "string" },
+        "category": { "type": "string" },
         "description": { "type": "string" },
-        "studentName": { "type": "string" },
-        "studentClass": { "type": "string" },
-        "division": { "type": "string" },
-        "projectUrl": { "type": "string" },
-        "githubUrl": { "type": "string" },
+        "studentAuthors": { "type": "array" },
+        "gradeClass": { "type": "string" },
         "imageUrl": { "type": "string" },
-        "createdAt": { "type": "string" },
+        "demoUrl": { "type": "string" },
+        "githubUrl": { "type": "string" },
         "featured": { "type": "boolean" },
-        "tags": { "type": "array" }
+        "date": { "type": "string" },
+        "techTags": { "type": "array" }
       },
-      "required": ["id", "title", "description", "studentName", "division"]
+      "required": ["id", "title", "category", "description", "studentAuthors", "gradeClass"]
     },
     "LabSetting": {
       "title": "LabSetting",

@@ -51,7 +51,7 @@ export const KegiatanSection: React.FC<KegiatanSectionProps> = ({
   const [formStatus, setFormStatus] = useState<ActivityEvent['status']>('Mendatang');
   const [formDate, setFormDate] = useState('');
   const [formTime, setFormTime] = useState('');
-  const [formLocation, setFormLocation] = useState('Lab Komputer 1 (Utama)');
+  const [formLocation, setFormLocation] = useState('Lab Komputer');
   const [formSpeaker, setFormSpeaker] = useState('');
   const [formMaxParticipants, setFormMaxParticipants] = useState(30);
   const [formRegisteredCount, setFormRegisteredCount] = useState(0);
@@ -81,7 +81,7 @@ export const KegiatanSection: React.FC<KegiatanSectionProps> = ({
     setFormStatus('Mendatang');
     setFormDate('28 Oktober 2026');
     setFormTime('13:30 - 15:30 WIB');
-    setFormLocation('Lab Komputer 1 (Utama)');
+    setFormLocation('Lab Komputer');
     setFormSpeaker(admin?.name ? `${admin.name} (Pembina IT Club)` : 'Tim Pembina IT Club');
     setFormMaxParticipants(32);
     setFormRegisteredCount(0);
@@ -553,7 +553,7 @@ export const KegiatanSection: React.FC<KegiatanSectionProps> = ({
                     required
                     value={formLocation}
                     onChange={(e) => setFormLocation(e.target.value)}
-                    placeholder="Contoh: Lab Komputer 1 (Utama)"
+                    placeholder="Contoh: Lab Komputer"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-cyan-400"
                   />
                 </div>

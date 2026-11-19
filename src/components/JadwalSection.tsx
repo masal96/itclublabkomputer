@@ -414,7 +414,6 @@ export const JadwalSection: React.FC<JadwalSectionProps> = ({
                     className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-cyan-400"
                   >
                     <option value="Lab Komputer">Lab Komputer</option>
-                    <option value="Lab Komputer 1 (Utama)">Lab Komputer 1 (Utama)</option>
                   </select>
                 </div>
 
