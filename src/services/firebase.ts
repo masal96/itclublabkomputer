@@ -12,6 +12,7 @@ import {
   query, 
   orderBy, 
   limit, 
+  writeBatch,
   Firestore
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
@@ -179,12 +180,21 @@ export async function getOrSeedAttendance(): Promise<AttendanceRecord[]> {
       return list;
     }
 
+    // Check whether attendance was already initialized or intentionally reset
+    const metaRef = doc(db, 'settings', 'attendance_meta');
+    const metaSnap = await getDoc(metaRef);
+    if (metaSnap.exists()) {
+      console.log('[Firestore] Attendance is empty (already seeded/reset), skipping dummy seed.');
+      return [];
+    }
+
     console.log('[Firestore] Seeding initial attendance to Firestore server...');
     const seeded: AttendanceRecord[] = [];
     for (const a of INITIAL_ATTENDANCE) {
       await setDoc(doc(db, 'attendance', a.id), a);
       seeded.push(a);
     }
+    await setDoc(metaRef, { seeded: true, seededAt: new Date().toISOString() }, { merge: true });
     return seeded;
   } catch (err) {
     console.warn('[Firestore] Error fetching attendance, using fallback:', err);
@@ -203,6 +213,41 @@ export async function addAttendanceRecord(record: AttendanceRecord): Promise<voi
   }
 }
 
+export async function resetAttendanceInFirestore(): Promise<number> {
+  try {
+    const attCol = collection(db, 'attendance');
+    const snapshot = await getDocs(attCol);
+
+    const docs = snapshot.docs;
+    const chunkSize = 400;
+    for (let i = 0; i < docs.length; i += chunkSize) {
+      const batch = writeBatch(db);
+      const chunk = docs.slice(i, i + chunkSize);
+      for (const d of chunk) {
+        batch.delete(d.ref);
+      }
+      await batch.commit();
+    }
+
+    // Record reset flag so INITIAL_ATTENDANCE is never re-seeded automatically
+    await setDoc(
+      doc(db, 'settings', 'attendance_meta'),
+      {
+        seeded: true,
+        lastResetAt: new Date().toISOString(),
+        deletedCount: docs.length,
+      },
+      { merge: true }
+    );
+
+    console.log(`[Firestore] Reset attendance completed. Deleted ${docs.length} records (students preserved).`);
+    return docs.length;
+  } catch (err) {
+    console.error('[Firestore] Failed to reset attendance records:', err);
+    throw err;
+  }
+}
+
 export function subscribeToAttendanceRecords(
   callback: (records: AttendanceRecord[]) => void
 ): () => void {
@@ -217,9 +262,7 @@ export function subscribeToAttendanceRecords(
         snapshot.forEach((d) => {
           records.push(d.data() as AttendanceRecord);
         });
-        if (records.length > 0) {
-          callback(records);
-        }
+        callback(records);
       },
       (error) => console.warn('[Firestore] Attendance onSnapshot error:', error)
     );

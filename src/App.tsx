@@ -41,6 +41,7 @@ import {
   subscribeToStudents,
   getOrSeedAttendance,
   addAttendanceRecord,
+  resetAttendanceInFirestore,
   subscribeToAttendanceRecords,
   getOrSeedSchedules,
   saveScheduleToFirestore,
@@ -195,7 +196,7 @@ export default function App() {
 
     // 3. Fetch or seed attendance logs & subscribe in real-time
     getOrSeedAttendance().then((serverAttendance) => {
-      if (serverAttendance && serverAttendance.length > 0) {
+      if (Array.isArray(serverAttendance)) {
         setAttendanceRecords(serverAttendance);
       }
     }).catch((err) => {
@@ -203,7 +204,7 @@ export default function App() {
     });
 
     const unsubAttendance = subscribeToAttendanceRecords((liveRecords) => {
-      if (liveRecords && liveRecords.length > 0) {
+      if (Array.isArray(liveRecords)) {
         setAttendanceRecords(liveRecords);
       }
     });
@@ -361,6 +362,13 @@ export default function App() {
     } catch (err) {
       console.warn('Error deleting student from Firestore:', err);
     }
+  };
+
+  const handleResetAttendance = async (): Promise<number> => {
+    const deletedCount = await resetAttendanceInFirestore();
+    setAttendanceRecords([]);
+    localStorage.setItem('itclub_attendance', JSON.stringify([]));
+    return deletedCount;
   };
 
   const handleAddSchedule = async (item: ScheduleItem) => {
@@ -614,6 +622,7 @@ export default function App() {
             students={students}
             attendanceRecords={attendanceRecords}
             onAddAttendance={handleAddAttendance}
+            onResetAttendance={handleResetAttendance}
             onOpenAdminModal={() => setAdminModalOpen(true)}
           />
         )}

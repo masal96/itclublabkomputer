@@ -14,6 +14,7 @@ import {
   where,
   orderBy,
   limit,
+  writeBatch,
   type Firestore,
 } from 'firebase/firestore';
 
@@ -397,6 +398,7 @@ app.get('/api/health', async (_req: Request, res: Response) => {
       'GET  /api/rfid/tap?uid=...',
       'GET  /api/rfid/last-unknown',
       'GET  /api/attendance',
+      'POST /api/attendance/reset',
       'GET  /api/assessments',
     ],
   });
@@ -655,6 +657,43 @@ app.get('/api/attendance', async (req: Request, res: Response) => {
       success: true,
       count: records.length,
       data: records,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+// 6b) Reset all stored attendance logs without touching students/cards
+app.post('/api/attendance/reset', async (_req: Request, res: Response) => {
+  try {
+    const snapshot = await getDocs(collection(db, 'attendance'));
+    const docs = snapshot.docs;
+    const chunkSize = 400;
+
+    for (let i = 0; i < docs.length; i += chunkSize) {
+      const batch = writeBatch(db);
+      const chunk = docs.slice(i, i + chunkSize);
+      for (const d of chunk) {
+        batch.delete(d.ref);
+      }
+      await batch.commit();
+    }
+
+    await setDoc(
+      doc(db, 'settings', 'attendance_meta'),
+      {
+        seeded: true,
+        lastResetAt: new Date().toISOString(),
+        deletedCount: docs.length,
+      },
+      { merge: true }
+    );
+
+    res.json({
+      success: true,
+      message: `Berhasil mereset ${docs.length} data absensi. Data anggota dan kartu tetap aman.`,
+      deletedCount: docs.length,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
