@@ -17,7 +17,7 @@ import {
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import config from '../../firebase-applet-config.json';
-import { Student, AttendanceRecord, ScheduleItem, PortfolioItem, ActivityEvent, StudentAssessment, PembinaCardProfile } from '../types';
+import { Student, AttendanceRecord, ScheduleItem, PortfolioItem, ActivityEvent, StudentAssessment, PembinaCardProfile, ActivityRegistration } from '../types';
 import { WhatsAppGatewayConfig } from '../utils/whatsapp';
 import { 
   INITIAL_STUDENTS, 
@@ -665,6 +665,122 @@ export async function savePembinaCardToFirestore(profile: PembinaCardProfile): P
   } catch (err) {
     console.error('[Firestore] Failed to save pembina card profile:', err);
     throw err;
+  }
+}
+
+// ==========================================
+// 9. ACTIVITY REGISTRATIONS & COACH CONTACT
+// ==========================================
+export interface CoachContactConfig {
+  coachName: string;
+  coachWhatsapp: string;
+  coachEmail: string;
+  updatedAt?: string;
+}
+
+export async function getCoachContactFromFirestore(): Promise<CoachContactConfig | null> {
+  try {
+    const docRef = doc(db, 'settings', 'coach_contact');
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      return {
+        coachName: data.coachName || 'Dwi Ambal Aziz, S.Kom',
+        coachWhatsapp: data.coachWhatsapp || '085731731051',
+        coachEmail: data.coachEmail || 'dwiambalaziz@gmail.com',
+        updatedAt: data.updatedAt,
+      };
+    }
+    const cardSnap = await getDoc(doc(db, 'settings', 'pembina_card'));
+    if (cardSnap.exists()) {
+      const cardData = cardSnap.data();
+      return {
+        coachName: cardData.name || 'Dwi Ambal Aziz, S.Kom',
+        coachWhatsapp: cardData.phone || '085731731051',
+        coachEmail: cardData.email || 'dwiambalaziz@gmail.com',
+        updatedAt: cardData.updatedAt,
+      };
+    }
+  } catch (err) {
+    console.warn('[Firestore] Error fetching coach contact config:', err);
+  }
+  return null;
+}
+
+export async function saveCoachContactToFirestore(configPayload: CoachContactConfig): Promise<void> {
+  try {
+    const docRef = doc(db, 'settings', 'coach_contact');
+    const payload = sanitizeForFirestore({
+      ...configPayload,
+      id: 'coach_contact',
+      updatedAt: new Date().toISOString(),
+    });
+    await setDoc(docRef, payload, { merge: true });
+  } catch (err) {
+    console.error('[Firestore] Failed to save coach contact config:', err);
+    throw err;
+  }
+}
+
+export async function getActivityRegistrationsFromFirestore(): Promise<ActivityRegistration[]> {
+  try {
+    const q = query(collection(db, 'activity_registrations'), orderBy('createdAt', 'desc'), limit(200));
+    const snapshot = await getDocs(q);
+    const list: ActivityRegistration[] = [];
+    snapshot.forEach((d) => {
+      list.push(d.data() as ActivityRegistration);
+    });
+    return list;
+  } catch (err) {
+    console.warn('[Firestore] Error fetching activity registrations:', err);
+    return [];
+  }
+}
+
+export async function saveActivityRegistrationToFirestore(reg: ActivityRegistration): Promise<void> {
+  try {
+    const payload = sanitizeForFirestore({
+      ...reg,
+      participantName: reg.participantName.trim().slice(0, 120),
+      participantClass: reg.participantClass.trim().slice(0, 80),
+      participantWhatsapp: reg.participantWhatsapp.trim().slice(0, 30),
+      reason: reg.reason.trim().slice(0, 1000),
+    });
+    await setDoc(doc(db, 'activity_registrations', reg.id), payload);
+  } catch (err) {
+    console.error('[Firestore] Failed to save activity registration:', err);
+    throw err;
+  }
+}
+
+export async function deleteActivityRegistrationFromFirestore(id: string): Promise<void> {
+  try {
+    await deleteDoc(doc(db, 'activity_registrations', id));
+  } catch (err) {
+    console.error('[Firestore] Failed to delete activity registration:', err);
+    throw err;
+  }
+}
+
+export function subscribeToActivityRegistrations(
+  callback: (list: ActivityRegistration[]) => void
+): () => void {
+  try {
+    const q = query(collection(db, 'activity_registrations'), orderBy('createdAt', 'desc'), limit(200));
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const list: ActivityRegistration[] = [];
+        snapshot.forEach((d) => {
+          list.push(d.data() as ActivityRegistration);
+        });
+        callback(list);
+      },
+      (error) => console.warn('[Firestore] Activity registrations subscription error:', error)
+    );
+  } catch (err) {
+    console.warn('[Firestore] Activity registrations subscription failed:', err);
+    return () => {};
   }
 }
 

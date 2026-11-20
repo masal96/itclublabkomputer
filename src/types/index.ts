@@ -140,3 +140,15 @@ export interface PembinaCardProfile {
   phone: string;
   updatedAt?: string;
 }
+
+export interface ActivityRegistration {
+  id: string;
+  activityId: string;
+  activityTitle: string;
+  participantName: string;
+  participantClass: string;
+  participantWhatsapp: string;
+  reason: string;
+  preferredChannel: 'whatsapp' | 'email';
+  createdAt: string;
+}

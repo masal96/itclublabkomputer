@@ -1,4 +1,4 @@
-import { Student, AttendanceRecord, StudentAssessment } from '../types';
+import { Student, AttendanceRecord, StudentAssessment, ActivityEvent, ActivityRegistration } from '../types';
 
 /**
  * Normalizes an Indonesian phone number to international format (628...)
@@ -536,6 +536,163 @@ export async function sendAssessmentWhatsAppNotification(
     success: true,
     method: 'direct',
     message: `Siap dikirim ke WhatsApp Wali (${targetPhone}). Klik buka WhatsApp jika belum terbuka.`,
+    url: directUrl,
+  };
+}
+
+export const DEFAULT_COACH_WHATSAPP = '085731731051';
+export const DEFAULT_COACH_EMAIL = 'dwiambalaziz@gmail.com';
+export const DEFAULT_COACH_NAME = 'Dwi Ambal Aziz, S.Kom';
+
+/**
+ * Generates an Indonesian WhatsApp notification message for Pembina when someone registers for an activity
+ */
+export function generateActivityRegistrationWhatsAppMessage(
+  reg: ActivityRegistration,
+  activity: ActivityEvent
+): string {
+  const submittedAt = new Date(reg.createdAt).toLocaleString('id-ID', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+
+  return `📋 *PENDAFTARAN KEGIATAN IT CLUB*
+--------------------------------------------------
+Yth. Pembina IT Club & Laboratorium Komputer,
+
+Terdapat pendaftar baru untuk kegiatan berikut:
+
+🏆 *Kegiatan:* ${activity.title}
+🏷️ *Kategori:* ${activity.category}
+📅 *Tanggal & Jam:* ${activity.date} (${activity.time})
+📍 *Lokasi:* ${activity.location}
+
+*DATA CALON PESERTA:*
+👤 *Nama:* ${reg.participantName}
+🏫 *Kelas:* ${reg.participantClass}
+📱 *No. WhatsApp:* ${reg.participantWhatsapp}
+💬 *Alasan Mengikuti Kegiatan:*
+_${reg.reason}_
+
+⏰ *Waktu Daftar:* ${submittedAt} WIB
+--------------------------------------------------
+Mohon konfirmasi kesediaan kuota kegiatan. Terima kasih.`;
+}
+
+/**
+ * Builds mailto URL addressed to Pembina's email with pre-filled subject and body
+ */
+export function getCoachEmailMailtoUrl(
+  coachEmail: string,
+  reg: ActivityRegistration,
+  activity: ActivityEvent
+): string {
+  const emailTarget = (coachEmail || DEFAULT_COACH_EMAIL).trim();
+  const subject = `[Pendaftaran Kegiatan IT Club] ${activity.title} - ${reg.participantName}`;
+  const submittedAt = new Date(reg.createdAt).toLocaleString('id-ID', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+
+  const body = `Yth. Pembina IT Club & Laboratorium Komputer,
+
+Saya mengajukan pendaftaran untuk mengikuti kegiatan berikut:
+
+Kegiatan: ${activity.title}
+Kategori: ${activity.category}
+Jadwal: ${activity.date} (${activity.time})
+Lokasi: ${activity.location}
+
+--- DATA PESERTA ---
+Nama Lengkap : ${reg.participantName}
+Kelas        : ${reg.participantClass}
+No. WhatsApp : ${reg.participantWhatsapp}
+Alasan Mengikuti Kegiatan:
+${reg.reason}
+
+Waktu Pengisian: ${submittedAt} WIB
+
+Terima kasih atas perhatian Bapak/Ibu Pembina.`;
+
+  return `mailto:${encodeURIComponent(emailTarget)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+/**
+ * Sends activity registration notification to Pembina via WhatsApp Gateway (if active) or Direct WA URL
+ */
+export async function sendActivityRegistrationToCoachWA(
+  reg: ActivityRegistration,
+  activity: ActivityEvent,
+  coachWhatsapp: string,
+  config: WhatsAppGatewayConfig
+): Promise<{ success: boolean; method: 'gateway' | 'direct'; message: string; url: string }> {
+  const targetPhone = coachWhatsapp || DEFAULT_COACH_WHATSAPP;
+  const cleanPhone = formatWhatsAppNumber(targetPhone);
+  const messageText = generateActivityRegistrationWhatsAppMessage(reg, activity);
+  const directUrl = getWhatsAppDirectUrl(cleanPhone, messageText);
+
+  if (config.enabled && config.mode === 'gateway') {
+    if (config.provider === 'fonnte' && config.apiKey?.trim()) {
+      try {
+        const formData = new FormData();
+        formData.append('target', cleanPhone);
+        formData.append('message', messageText);
+
+        const res = await fetch('https://api.fonnte.com/send', {
+          method: 'POST',
+          headers: { Authorization: config.apiKey.trim() },
+          body: formData,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && (data.status === true || data.status === 'true' || data.id)) {
+          return {
+            success: true,
+            method: 'gateway',
+            message: `Pendaftaran berhasil dikirim otomatis ke WhatsApp Pembina (${targetPhone})!`,
+            url: directUrl,
+          };
+        }
+      } catch {
+        // fallback to direct WA link below
+      }
+    }
+
+    if (config.provider === 'custom' && config.customEndpoint?.trim()) {
+      try {
+        const res = await fetch(config.customEndpoint.trim(), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'activity_registration',
+            phone: cleanPhone,
+            target: targetPhone,
+            activityId: activity.id,
+            activityTitle: activity.title,
+            participantName: reg.participantName,
+            participantClass: reg.participantClass,
+            participantWhatsapp: reg.participantWhatsapp,
+            reason: reg.reason,
+            message: messageText,
+          }),
+        });
+        if (res.ok) {
+          return {
+            success: true,
+            method: 'gateway',
+            message: `Pendaftaran berhasil diteruskan ke WhatsApp Pembina (${targetPhone}) via Webhook!`,
+            url: directUrl,
+          };
+        }
+      } catch {
+        // fallback to direct WA link below
+      }
+    }
+  }
+
+  return {
+    success: true,
+    method: 'direct',
+    message: `Data pendaftaran tersimpan & siap dikirim ke WhatsApp Pembina (${targetPhone}).`,
     url: directUrl,
   };
 }

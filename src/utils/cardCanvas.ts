@@ -684,10 +684,6 @@ export async function generatePembinaFrontCardImage(pembina: PembinaCardProfile)
   ctx.font = 'bold 19px "Plus Jakarta Sans", system-ui, sans-serif';
   ctx.fillText(`Jabatan : ${pembina.roleTitle}`, detailX, 328, 445);
 
-  ctx.fillStyle = '#38bdf8';
-  ctx.font = 'bold 17px "JetBrains Mono", monospace';
-  ctx.fillText(`RFID ID : ${pembina.rfidUid || 'PEMBINA-001'}`, detailX, 368);
-
   // Embedded QR Code
   const qrBoxW = 216;
   const qrBoxH = 216;

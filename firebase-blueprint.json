@@ -161,6 +161,23 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["id", "studentId", "studentName", "nisn", "division", "period", "finalScore", "grade", "published"]
+    },
+    "ActivityRegistration": {
+      "title": "ActivityRegistration",
+      "description": "Participant registration submission when clicking Ikuti Kegiatan",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "activityId": { "type": "string" },
+        "activityTitle": { "type": "string" },
+        "participantName": { "type": "string", "maxLength": 120 },
+        "participantClass": { "type": "string", "maxLength": 80 },
+        "participantWhatsapp": { "type": "string", "maxLength": 30 },
+        "reason": { "type": "string", "maxLength": 1000 },
+        "preferredChannel": { "type": "string", "enum": ["whatsapp", "email"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "activityId", "activityTitle", "participantName", "participantClass", "participantWhatsapp", "reason", "preferredChannel", "createdAt"]
     }
   },
   "firestore": {
@@ -191,6 +208,10 @@
     "/assessments/{assessmentId}": {
       "schema": "StudentAssessment",
       "description": "Collection of student IT Club evaluations and progress reports for parents"
+    },
+    "/activity_registrations/{registrationId}": {
+      "schema": "ActivityRegistration",
+      "description": "Collection of participant registrations for IT Club activities"
     }
   }
 }

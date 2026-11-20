@@ -934,9 +934,6 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
                           <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/50">
                             {pembinaProfile.roleTitle}
                           </span>
-                          <span className="text-[10px] font-mono text-sky-300">
-                            RFID: {pembinaProfile.rfidUid}
-                          </span>
                         </div>
                       </div>
 
@@ -1590,9 +1587,6 @@ export const CardStudioSection: React.FC<CardStudioSectionProps> = ({
                             </div>
                             <div className="text-[10px] text-amber-200 truncate">
                               {pembinaProfile.roleTitle}
-                            </div>
-                            <div className="text-[9px] text-sky-300 font-mono pt-0.5">
-                              RFID: {pembinaProfile.rfidUid}
                             </div>
                           </div>
                           <div className="p-1 bg-white rounded-md shrink-0">
