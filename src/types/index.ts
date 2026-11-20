@@ -25,7 +25,7 @@ export interface AttendanceRecord {
   studentName: string;
   class: string;
   nisn: string;
-  division: DivisionType;
+  division: DivisionType | string;
   method: 'RFID' | 'QR Code' | 'Manual';
   status: 'Hadir' | 'Terlambat' | 'Izin';
   tapType?: 'Masuk' | 'Pulang';
@@ -33,6 +33,7 @@ export interface AttendanceRecord {
   notes?: string;
   parentPhone?: string;
   waSent?: boolean;
+  isPembina?: boolean;
 }
 
 export type DayOfWeek = 'Senin' | 'Selasa' | 'Rabu' | 'Kamis' | 'Jumat' | 'Sabtu';
@@ -76,6 +77,25 @@ export interface LearningModule {
   syllabus: string[];
   starterCode?: string;
   starterLanguage?: string;
+  pdfUrl?: string;
+  videoUrl?: string;
+  updatedAt?: string;
+}
+
+export interface TaskSubmission {
+  id: string;
+  moduleId: string;
+  moduleTitle: string;
+  studentName: string;
+  nisn: string;
+  studentClass: string;
+  division: DivisionType;
+  projectUrl: string;
+  notes?: string;
+  status: 'Menunggu' | 'Dinilai' | 'Perlu Revisi';
+  feedback?: string;
+  score?: number;
+  submittedAt: string;
 }
 
 export interface ActivityEvent {
@@ -92,13 +112,25 @@ export interface ActivityEvent {
   maxParticipants: number;
 }
 
+export type AdminRole = 'guru_admin' | 'pengurus';
+
 export interface AdminUser {
   isAuthenticated: boolean;
   name: string;
   nip: string;
-  role: 'guru_admin';
+  role: AdminRole;
   email: string;
   avatar: string;
+  authProvider?: 'google' | 'server_passcode';
+  sessionToken?: string;
+}
+
+export interface StaffRoleEntry {
+  email: string;
+  name: string;
+  role: AdminRole;
+  addedBy: string;
+  createdAt: string;
 }
 
 export interface StudentAssessment {
@@ -150,5 +182,15 @@ export interface ActivityRegistration {
   participantWhatsapp: string;
   reason: string;
   preferredChannel: 'whatsapp' | 'email';
+  createdAt: string;
+}
+
+export interface LabAnnouncement {
+  id: string;
+  title: string;
+  content: string;
+  priority: 'Info' | 'Penting' | 'Lomba' | 'Libur';
+  active: boolean;
+  authorName: string;
   createdAt: string;
 }

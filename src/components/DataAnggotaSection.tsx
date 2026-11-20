@@ -701,15 +701,17 @@ export const DataAnggotaSection: React.FC<DataAnggotaSectionProps> = ({
                   <span>Edit</span>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => handleOpenDelete(student)}
-                  className="py-1.5 px-2.5 rounded-lg bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-500/40 text-xs font-bold flex items-center gap-1 transition-all"
-                  title="Hapus Anggota"
-                >
-                  <Trash2 className="w-3.5 h-3.5 text-red-400" />
-                  <span>Hapus</span>
-                </button>
+                {admin.role === 'guru_admin' && (
+                  <button
+                    type="button"
+                    onClick={() => handleOpenDelete(student)}
+                    className="py-1.5 px-2.5 rounded-lg bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-500/40 text-xs font-bold flex items-center gap-1 transition-all"
+                    title="Hapus Anggota (Khusus Pembina Utama)"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                    <span>Hapus</span>
+                  </button>
+                )}
               </div>
 
             </div>
@@ -804,14 +806,16 @@ export const DataAnggotaSection: React.FC<DataAnggotaSectionProps> = ({
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => handleOpenDelete(s)}
-                          className="p-1.5 rounded-lg bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-500/40"
-                          title="Hapus Anggota"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {admin.role === 'guru_admin' && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenDelete(s)}
+                            className="p-1.5 rounded-lg bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-500/40"
+                            title="Hapus Anggota (Khusus Pembina Utama)"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

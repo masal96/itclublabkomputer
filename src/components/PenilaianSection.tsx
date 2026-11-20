@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import QRCode from 'qrcode';
 import {
   Award,
   Search,
@@ -24,6 +25,7 @@ import {
   Calendar,
   Wrench,
   Download,
+  ShieldCheck,
 } from 'lucide-react';
 import {
   AdminUser,
@@ -46,6 +48,7 @@ interface PenilaianSectionProps {
   onUpdateAssessment: (assessment: StudentAssessment) => Promise<void> | void;
   onDeleteAssessment: (id: string) => Promise<void> | void;
   onOpenAdminModal: () => void;
+  onOpenVerifyCert?: () => void;
 }
 
 const PERIOD_OPTIONS = [
@@ -129,18 +132,19 @@ export const PenilaianSection: React.FC<PenilaianSectionProps> = ({
   onUpdateAssessment,
   onDeleteAssessment,
   onOpenAdminModal,
+  onOpenVerifyCert,
 }) => {
   // Active sub-mode: 'parent' (Rapor Wali Murid) or 'teacher' (Kelola Nilai Guru)
   const [viewMode, setViewMode] = useState<'parent' | 'teacher'>(
-    admin.isAuthenticated ? 'teacher' : 'parent'
+    admin.isAuthenticated && admin.role === 'guru_admin' ? 'teacher' : 'parent'
   );
 
-  // Sync default mode when admin logs out
+  // Sync default mode when admin logs out or role is pengurus
   useEffect(() => {
-    if (!admin.isAuthenticated && viewMode === 'teacher') {
+    if ((!admin.isAuthenticated || admin.role !== 'guru_admin') && viewMode === 'teacher') {
       setViewMode('parent');
     }
-  }, [admin.isAuthenticated, viewMode]);
+  }, [admin.isAuthenticated, admin.role, viewMode]);
 
   // Parent portal search & selection
   const [parentSearch, setParentSearch] = useState<string>('');
@@ -166,7 +170,7 @@ export const PenilaianSection: React.FC<PenilaianSectionProps> = ({
   const [sendingWaId, setSendingWaId] = useState<string | null>(null);
   const [certificateReport, setCertificateReport] = useState<StudentAssessment | null>(null);
 
-  const handleDownloadCertificatePng = (report: StudentAssessment) => {
+  const handleDownloadCertificatePng = async (report: StudentAssessment) => {
     const canvas = document.createElement('canvas');
     canvas.width = 1600;
     canvas.height = 1130;
@@ -335,7 +339,7 @@ export const PenilaianSection: React.FC<PenilaianSectionProps> = ({
     ctx.font = '20px sans-serif';
     ctx.fillText(predicateLine, 800, boxY + 82, boxWidth - 64);
 
-    // Signatures
+    // Signatures & QR Authenticity Verification Badge
     ctx.textAlign = 'left';
     ctx.fillStyle = '#94a3b8';
     ctx.font = '20px sans-serif';
@@ -343,6 +347,38 @@ export const PenilaianSection: React.FC<PenilaianSectionProps> = ({
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 24px monospace';
     ctx.fillText(report.assessmentDate, 160, 975);
+
+    // Center QR Code for E-Certificate Authenticity Verification
+    const certCode = `CERT-${report.nisn}-${report.assessmentDate.replace(/-/g, '')}`;
+    const verifyUrl = `${window.location.origin}/?verify=${encodeURIComponent(certCode)}`;
+    try {
+      const qrDataUrl = await QRCode.toDataURL(verifyUrl, {
+        width: 124,
+        margin: 1,
+        color: { dark: '#080c16', light: '#ffffff' },
+      });
+      await new Promise<void>((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          drawRoundedRect(732, 886, 136, 136, 12);
+          ctx.fillStyle = '#ffffff';
+          ctx.fill();
+          ctx.strokeStyle = '#06b6d4';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          ctx.drawImage(img, 738, 892, 124, 124);
+          ctx.textAlign = 'center';
+          ctx.fillStyle = '#67e8f9';
+          ctx.font = 'bold 13px monospace';
+          ctx.fillText('SCAN VERIFIKASI ASLI', 800, 1044);
+          resolve();
+        };
+        img.onerror = () => resolve();
+        img.src = qrDataUrl;
+      });
+    } catch {
+      // skip QR if offline error
+    }
 
     ctx.textAlign = 'right';
     ctx.fillStyle = '#94a3b8';
@@ -724,7 +760,7 @@ export const PenilaianSection: React.FC<PenilaianSectionProps> = ({
               Portal Wali Murid
             </button>
 
-            {admin.isAuthenticated ? (
+            {admin.isAuthenticated && admin.role === 'guru_admin' ? (
               <button
                 type="button"
                 onClick={() => setViewMode('teacher')}
@@ -744,10 +780,21 @@ export const PenilaianSection: React.FC<PenilaianSectionProps> = ({
                 className="px-3.5 py-2 rounded-lg text-xs font-semibold text-amber-300 hover:text-amber-200 hover:bg-slate-800/60 transition-all flex items-center gap-1.5 whitespace-nowrap"
               >
                 <Lock className="w-3.5 h-3.5" />
-                Input Nilai (Login Guru)
+                {admin.isAuthenticated ? 'Khusus Pembina Utama' : 'Input Nilai (Login Guru)'}
               </button>
             )}
           </div>
+
+          {onOpenVerifyCert && (
+            <button
+              type="button"
+              onClick={onOpenVerifyCert}
+              className="px-3.5 py-2.5 rounded-xl bg-emerald-950/70 hover:bg-emerald-900 border border-emerald-500/40 text-xs font-bold text-emerald-300 flex items-center gap-1.5 transition-all"
+            >
+              <ShieldCheck className="w-4 h-4" />
+              <span>Verifikasi E-Sertifikat</span>
+            </button>
+          )}
         </div>
       </div>
 

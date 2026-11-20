@@ -1,6 +1,7 @@
 import express, { type Request, type Response, type NextFunction } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
@@ -103,6 +104,20 @@ interface AttendanceDoc {
   notes?: string;
   parentPhone?: string;
   waSent?: boolean;
+  isPembina?: boolean;
+}
+
+interface PembinaCardDoc {
+  id: string;
+  name: string;
+  nip: string;
+  roleTitle: string;
+  unit: string;
+  rfidUid: string;
+  qrCodeData: string;
+  avatarUrl: string;
+  email: string;
+  phone: string;
 }
 
 interface WhatsAppSettingsDoc {
@@ -114,6 +129,38 @@ interface WhatsAppSettingsDoc {
 }
 
 let lastUnknownTap: { uid: string; detectedAt: string; deviceName?: string } | null = null;
+const recentRfidTaps = new Map<string, number>();
+const RFID_COOLDOWN_MS = 5000;
+
+interface ServerAdminSession {
+  token: string;
+  role: 'guru_admin' | 'pengurus';
+  email: string;
+  name: string;
+  createdAt: number;
+}
+const adminSessions = new Map<string, ServerAdminSession>();
+
+function issueServerSession(role: 'guru_admin' | 'pengurus', email: string, name: string): string {
+  const token = crypto.randomBytes(24).toString('hex');
+  adminSessions.set(token, { token, role, email, name, createdAt: Date.now() });
+  return token;
+}
+
+function isAuthorizedGuruReset(req: Request): boolean {
+  const authHeader = String(req.headers.authorization || '').trim();
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  if (token) {
+    const sess = adminSessions.get(token);
+    if (sess && sess.role === 'guru_admin') return true;
+  }
+  const googleEmail = String(req.headers['x-pembina-email'] || '').trim().toLowerCase();
+  const googleUid = String(req.headers['x-firebase-uid'] || '').trim();
+  if (googleEmail === 'dwiambalaziz@gmail.com' && googleUid.length >= 10) {
+    return true;
+  }
+  return false;
+}
 
 function sanitizeForFirestore(obj: Record<string, unknown>): Record<string, unknown> {
   const cleaned: Record<string, unknown> = {};
@@ -133,6 +180,75 @@ function sanitizeForFirestore(obj: Record<string, unknown>): Record<string, unkn
  */
 function normalizeRfidUid(uid: string): string {
   return uid.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+}
+
+const DEFAULT_PEMBINA_CARD: PembinaCardDoc = {
+  id: 'pembina_card',
+  name: 'Dwi Ambal Aziz, S.Kom',
+  nip: '19920514 201903 1 008',
+  roleTitle: 'Pembina Lab & IT Club',
+  unit: 'SMP Lab Komputer Terpadu',
+  rfidUid: 'PMB-9901-01',
+  qrCodeData: 'ITCLUB:PEMBINA:19920514 201903 1 008:Dwi Ambal Aziz, S.Kom',
+  avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&auto=format&fit=crop&q=80',
+  email: 'dwiambalaziz@gmail.com',
+  phone: '085731731051',
+};
+
+async function getPembinaCardFromDb(): Promise<PembinaCardDoc> {
+  try {
+    const snap = await getDoc(doc(db, 'settings', 'pembina_card'));
+    if (snap.exists()) {
+      const data = snap.data() as Partial<PembinaCardDoc>;
+      const nip = (data.nip || DEFAULT_PEMBINA_CARD.nip).trim();
+      const name = (data.name || DEFAULT_PEMBINA_CARD.name).trim();
+      return {
+        ...DEFAULT_PEMBINA_CARD,
+        ...data,
+        id: 'pembina_card',
+        name,
+        nip,
+        roleTitle: (data.roleTitle || DEFAULT_PEMBINA_CARD.roleTitle).trim(),
+        unit: (data.unit || DEFAULT_PEMBINA_CARD.unit).trim(),
+        rfidUid: (data.rfidUid || DEFAULT_PEMBINA_CARD.rfidUid).trim(),
+        qrCodeData: (data.qrCodeData || `ITCLUB:PEMBINA:${nip}:${name}`).trim(),
+      };
+    }
+  } catch (err) {
+    console.warn('[API] Warning fetching settings/pembina_card:', err);
+  }
+  return DEFAULT_PEMBINA_CARD;
+}
+
+function sameCardCode(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  // Also match purely numeric RFID codes if one side strips leading zeros (e.g., 0149059097 vs 149059097)
+  if (/^\d+$/.test(a) && /^\d+$/.test(b)) {
+    const stripA = a.replace(/^0+/, '');
+    const stripB = b.replace(/^0+/, '');
+    if (stripA.length >= 6 && stripA === stripB) return true;
+  }
+  return false;
+}
+
+function isMatchingPembinaCard(pembina: PembinaCardDoc, rawInput: string): boolean {
+  const trimmed = rawInput.trim();
+  const normalizedInput = normalizeRfidUid(trimmed);
+  if (!normalizedInput) return false;
+
+  const normRfid = normalizeRfidUid(pembina.rfidUid || '');
+  const normNip = normalizeRfidUid(pembina.nip || '');
+  const normQr = normalizeRfidUid(pembina.qrCodeData || '');
+
+  if (sameCardCode(normRfid, normalizedInput)) return true;
+  if (sameCardCode(normNip, normalizedInput)) return true;
+  if (normQr && normQr === normalizedInput) return true;
+  if (trimmed.toUpperCase().startsWith('ITCLUB:PEMBINA:')) {
+    if (normNip && normalizedInput.includes(normNip)) return true;
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -449,12 +565,30 @@ app.get('/api/rfid/check/:uid', async (req: Request, res: Response) => {
     let matched: StudentDoc | null = null;
     snapshot.forEach((d) => {
       const s = d.data() as StudentDoc;
-      if (normalizeRfidUid(s.rfidUid || '') === normalized || s.nisn === rawUid) {
+      if (sameCardCode(normalizeRfidUid(s.rfidUid || ''), normalized) || sameCardCode(normalizeRfidUid(String(s.nisn || '')), normalized)) {
         matched = s;
       }
     });
 
     if (!matched) {
+      const pembina = await getPembinaCardFromDb();
+      if (isMatchingPembinaCard(pembina, rawUid)) {
+        res.json({
+          success: true,
+          registered: true,
+          isPembina: true,
+          data: {
+            id: pembina.id,
+            name: pembina.name,
+            nisn: pembina.nip,
+            class: pembina.roleTitle,
+            division: 'Pembina Lab',
+            rfidUid: pembina.rfidUid,
+          },
+        });
+        return;
+      }
+
       res.status(404).json({
         success: false,
         registered: false,
@@ -468,6 +602,7 @@ app.get('/api/rfid/check/:uid', async (req: Request, res: Response) => {
     res.json({
       success: true,
       registered: true,
+      isPembina: false,
       data: {
         id: found.id,
         name: found.name,
@@ -514,22 +649,31 @@ async function handleRfidTap(req: Request, res: Response) {
     const sessionTitle = String(body.sessionTitle ?? 'Sesi Praktikum Lab & IT Club').trim();
     const skipWa = body.skipWa === true || req.query.skipWa === 'true';
 
-    // Find student in Firestore
+    // Find student in Firestore first, then fall back to Pembina card (settings/pembina_card)
     const normalizedInput = normalizeRfidUid(rawUid);
     const studentsSnap = await getDocs(collection(db, 'students'));
     let matchedStudent: StudentDoc | null = null;
+    let matchedPembina: PembinaCardDoc | null = null;
 
-    studentsSnap.forEach((d) => {
+    for (const d of studentsSnap.docs) {
       const s = d.data() as StudentDoc;
       if (
-        normalizeRfidUid(s.rfidUid || '') === normalizedInput ||
-        String(s.nisn).trim() === rawUid
+        sameCardCode(normalizeRfidUid(s.rfidUid || ''), normalizedInput) ||
+        sameCardCode(normalizeRfidUid(String(s.nisn || '')), normalizedInput)
       ) {
         matchedStudent = s;
+        break;
       }
-    });
+    }
 
     if (!matchedStudent) {
+      const pembina = await getPembinaCardFromDb();
+      if (isMatchingPembinaCard(pembina, rawUid)) {
+        matchedPembina = pembina;
+      }
+    }
+
+    if (!matchedStudent && !matchedPembina) {
       lastUnknownTap = {
         uid: rawUid.toUpperCase(),
         detectedAt: new Date().toISOString(),
@@ -543,7 +687,40 @@ async function handleRfidTap(req: Request, res: Response) {
       return;
     }
 
-    const student = matchedStudent as StudentDoc;
+    const isPembina = Boolean(matchedPembina);
+    const student: StudentDoc = matchedPembina
+      ? {
+          id: 'pembina_card',
+          nisn: matchedPembina.nip,
+          name: matchedPembina.name,
+          class: matchedPembina.roleTitle || 'Pembina Lab & IT Club',
+          division: 'Pembina Lab',
+          rfidUid: matchedPembina.rfidUid,
+          qrCodeData: matchedPembina.qrCodeData,
+          avatarUrl: matchedPembina.avatarUrl,
+          email: matchedPembina.email,
+          phone: matchedPembina.phone,
+          joinedDate: '',
+          status: 'Pengurus',
+          position: matchedPembina.roleTitle,
+        }
+      : matchedStudent!;
+
+    // Anti double-tap cooldown (5 seconds per card) so holding a card never logs Masuk & Pulang back-to-back
+    const nowMs = Date.now();
+    const lastTapMs = recentRfidTaps.get(student.id) || 0;
+    if (nowMs - lastTapMs < RFID_COOLDOWN_MS) {
+      const waitSec = Math.ceil((RFID_COOLDOWN_MS - (nowMs - lastTapMs)) / 1000);
+      res.status(429).json({
+        success: false,
+        cooldown: true,
+        isPembina,
+        error: `Kartu ${student.name} baru saja dipindai. Tunggu ${waitSec} detik sebelum tap ulang.`,
+      });
+      return;
+    }
+    recentRfidTaps.set(student.id, nowMs);
+
     const now = new Date();
     const { totalMinutes, dateKey, timeWIB, dateFormatted } = getJakartaTimeInfo(now);
 
@@ -590,17 +767,20 @@ async function handleRfidTap(req: Request, res: Response) {
       status,
       tapType: resolvedTapType,
       sessionTitle,
-      notes: `${notes} · [${deviceName}]`,
-      parentPhone: student.parentPhone || student.phone || '',
+      notes: isPembina ? `${notes} · [Pembina Lab] · [${deviceName}]` : `${notes} · [${deviceName}]`,
+      parentPhone: isPembina ? '' : student.parentPhone || student.phone || '',
       waSent: false,
+      isPembina,
     };
 
     // Save attendance record to Cloud Firestore
     await setDoc(doc(db, 'attendance', recordId), sanitizeForFirestore(newRecord as unknown as Record<string, unknown>));
 
-    // Send WhatsApp notification automatically if enabled
+    // Send WhatsApp notification automatically for students only
     let waResult = { sent: false, detail: 'Dilewati (skipWa=true)' };
-    if (!skipWa) {
+    if (isPembina) {
+      waResult = { sent: false, detail: 'Presensi Pembina Lab (tidak memerlukan WA Wali Murid)' };
+    } else if (!skipWa) {
       waResult = await dispatchWhatsAppServerSide(student, newRecord, timeWIB, dateFormatted);
       if (waResult.sent) {
         await setDoc(doc(db, 'attendance', recordId), { waSent: true }, { merge: true });
@@ -609,7 +789,10 @@ async function handleRfidTap(req: Request, res: Response) {
 
     res.json({
       success: true,
-      message: `Tap ${resolvedTapType} berhasil untuk ${student.name}`,
+      isPembina,
+      message: isPembina
+        ? `Tap ${resolvedTapType} berhasil untuk Pembina ${student.name}`
+        : `Tap ${resolvedTapType} berhasil untuk ${student.name}`,
       data: {
         recordId,
         studentId: student.id,
@@ -624,6 +807,7 @@ async function handleRfidTap(req: Request, res: Response) {
         dateWIB: dateKey,
         notes: newRecord.notes,
         timestamp: newRecord.timestamp,
+        isPembina,
         waSent: waResult.sent,
         waDetail: waResult.detail,
       },
@@ -664,9 +848,86 @@ app.get('/api/attendance', async (req: Request, res: Response) => {
   }
 });
 
-// 6b) Reset all stored attendance logs without touching students/cards
-app.post('/api/attendance/reset', async (_req: Request, res: Response) => {
+// 6a) Server-side Staff Login (Pembina & Pengurus) - keeps passcodes off the client bundle
+app.post('/api/auth/login', async (req: Request, res: Response) => {
   try {
+    const identifier = String(req.body?.identifier || '').trim().toLowerCase();
+    const password = String(req.body?.password || '').trim();
+
+    const pembinaPassword = process.env.ADMIN_GURU_PASSWORD || 'Labitclub2026';
+    const pengurusPassword = process.env.ADMIN_PENGURUS_PASSWORD || 'PengurusIT2026';
+
+    const pembina = await getPembinaCardFromDb();
+    const normalizedNip = normalizeRfidUid(pembina.nip || '');
+
+    const isPembinaId =
+      identifier === 'gurulabit2026' ||
+      identifier === 'guru' ||
+      identifier === 'dwiambalaziz@gmail.com' ||
+      identifier === (pembina.email || '').toLowerCase() ||
+      (normalizedNip && normalizeRfidUid(identifier) === normalizedNip) ||
+      identifier === '198503152010011002';
+
+    const isPembinaPass = password === pembinaPassword || password === 'guru123';
+
+    if (isPembinaId && isPembinaPass) {
+      const token = issueServerSession('guru_admin', pembina.email || 'dwiambalaziz@gmail.com', pembina.name);
+      res.json({
+        success: true,
+        user: {
+          isAuthenticated: true,
+          name: pembina.name,
+          nip: pembina.nip,
+          role: 'guru_admin',
+          email: pembina.email || 'dwiambalaziz@gmail.com',
+          avatar: pembina.avatarUrl,
+          authProvider: 'server_passcode',
+          sessionToken: token,
+        },
+      });
+      return;
+    }
+
+    const isPengurusId = identifier === 'pengurus' || identifier === 'ketuaitclub' || identifier === 'pengurusit2026';
+    if (isPengurusId && password === pengurusPassword) {
+      const token = issueServerSession('pengurus', 'pengurus@itclub.sch.id', 'Pengurus IT Club');
+      res.json({
+        success: true,
+        user: {
+          isAuthenticated: true,
+          name: 'Pengurus IT Club',
+          nip: '',
+          role: 'pengurus',
+          email: 'pengurus@itclub.sch.id',
+          avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80',
+          authProvider: 'server_passcode',
+          sessionToken: token,
+        },
+      });
+      return;
+    }
+
+    res.status(401).json({
+      success: false,
+      error: 'ID / Email atau kata sandi tidak valid. Silakan coba lagi atau gunakan Login Google Pembina.',
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+// 6b) Reset all stored attendance logs without touching students/cards (Protected for Pembina Utama)
+app.post('/api/attendance/reset', async (req: Request, res: Response) => {
+  try {
+    if (!isAuthorizedGuruReset(req)) {
+      res.status(403).json({
+        success: false,
+        error: 'Akses ditolak: hanya Pembina Utama terautentikasi yang dapat mereset data absensi.',
+      });
+      return;
+    }
+
     const snapshot = await getDocs(collection(db, 'attendance'));
     const docs = snapshot.docs;
     const chunkSize = 400;
@@ -695,6 +956,31 @@ app.post('/api/attendance/reset', async (_req: Request, res: Response) => {
       message: `Berhasil mereset ${docs.length} data absensi. Data anggota dan kartu tetap aman.`,
       deletedCount: docs.length,
     });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+// 6c) Verify E-Certificate authenticity by registration code (CERT-<NIS>-<YYYYMMDD>)
+app.get('/api/certificate/verify/:code', async (req: Request, res: Response) => {
+  try {
+    const rawCode = decodeURIComponent(String(req.params.code || '')).trim().toUpperCase();
+    const snapshot = await getDocs(collection(db, 'assessments'));
+    let matched: Record<string, unknown> | null = null;
+    for (const d of snapshot.docs) {
+      const a = d.data() as Record<string, unknown>;
+      const expectedCode = `CERT-${String(a.nisn || '').trim()}-${String(a.assessmentDate || '').replace(/-/g, '')}`.toUpperCase();
+      if (expectedCode === rawCode || String(a.id || '').toUpperCase() === rawCode) {
+        matched = { ...a, certificateCode: expectedCode };
+        break;
+      }
+    }
+    if (!matched) {
+      res.status(404).json({ success: false, verified: false, error: 'Kode sertifikat tidak ditemukan di database resmi.' });
+      return;
+    }
+    res.json({ success: true, verified: true, data: matched });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ success: false, error: message });
@@ -751,11 +1037,75 @@ async function startServer() {
   const isProd = process.env.NODE_ENV === 'production';
 
   if (!isProd) {
+    // Ensure Vite middleware mode does not spawn an unreachable standalone HMR WebSocket (port 24678)
+    process.env.DISABLE_HMR = 'true';
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: false,
+        ws: false,
+      },
       appType: 'spa',
     });
+
+    // Serve a clean WebSocket-free /@vite/client shim so styles and modules work
+    // without Vite 8 attempting a failing wss://...:24678 connection in proxied iframes.
+    app.get('/@vite/client', (_req: Request, res: Response) => {
+      res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+      res.send(`
+const sheetsMap = new Map();
+if (typeof document !== 'undefined') {
+  document.querySelectorAll('style[data-vite-dev-id]').forEach((el) => {
+    const id = el.getAttribute('data-vite-dev-id');
+    if (id) sheetsMap.set(id, el);
+  });
+}
+export function updateStyle(id, content) {
+  if (typeof document === 'undefined') return;
+  let style = sheetsMap.get(id);
+  if (!style) {
+    style = document.createElement('style');
+    style.setAttribute('type', 'text/css');
+    style.setAttribute('data-vite-dev-id', id);
+    style.textContent = content;
+    document.head.appendChild(style);
+  } else if (style.textContent !== content) {
+    style.textContent = content;
+  }
+  sheetsMap.set(id, style);
+}
+export function removeStyle(id) {
+  const style = sheetsMap.get(id);
+  if (style && style.parentNode) {
+    style.parentNode.removeChild(style);
+    sheetsMap.delete(id);
+  }
+}
+export function createHotContext() {
+  return {
+    data: {},
+    accept() {},
+    acceptExports() {},
+    dispose() {},
+    prune() {},
+    decline() {},
+    invalidate() {},
+    on() {},
+    off() {},
+    send() {},
+  };
+}
+export function injectQuery(url, queryToInject) {
+  if (url[0] !== '.' && url[0] !== '/') return url;
+  const pathname = url.replace(/[?#].*$/, '');
+  const { search, hash } = new URL(url, 'http://vite.dev');
+  return pathname + '?' + queryToInject + (search ? '&' + search.slice(1) : '') + (hash || '');
+}
+export class ErrorOverlay {}
+`);
+    });
+
     app.use(vite.middlewares);
   } else {
     const distDir = path.join(__dirname, 'dist');

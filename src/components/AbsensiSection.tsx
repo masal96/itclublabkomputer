@@ -38,10 +38,18 @@ import {
   Cpu,
   Terminal,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  Award,
+  Maximize2,
+  FileText,
+  BarChart3
 } from 'lucide-react';
-import { Student, AttendanceRecord, AdminUser } from '../types';
+import jsQR from 'jsqr';
+import { Student, AttendanceRecord, AdminUser, PembinaCardProfile } from '../types';
 import { soundEffects } from '../utils/audio';
+import { AbsensiKioskModal } from './AbsensiKioskModal';
+import { MonthlyReportModal } from './MonthlyReportModal';
+import { AnalyticsSection } from './AnalyticsSection';
 import { 
   generateAttendanceWhatsAppMessage, 
   getWhatsAppDirectUrl, 
@@ -56,7 +64,9 @@ import {
 import {
   saveWhatsAppConfigToFirestore,
   subscribeToWhatsAppConfig,
-  getWhatsAppConfigFromFirestore
+  getWhatsAppConfigFromFirestore,
+  getPembinaCardFromFirestore,
+  subscribeToPembinaCard
 } from '../services/firebase';
 
 interface AbsensiSectionProps {
@@ -87,7 +97,10 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
   const [manualUid, setManualUid] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterDate, setFilterDate] = useState<string>('');
-  const [attendanceView, setAttendanceView] = useState<'logs' | 'recap'>('logs');
+  const [attendanceView, setAttendanceView] = useState<'logs' | 'recap' | 'analytics'>('logs');
+  const [showKioskModal, setShowKioskModal] = useState(false);
+  const [showMonthlyReportModal, setShowMonthlyReportModal] = useState(false);
+  const lastRfidTapMapRef = useRef<Map<string, number>>(new Map());
   const [filterStatus, setFilterStatus] = useState<'all' | 'Hadir' | 'Terlambat' | 'Masuk' | 'Pulang'>('all');
   const [lastScannedStudent, setLastScannedStudent] = useState<{
     student: Student;
@@ -99,6 +112,83 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
   } | null>(null);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const qrCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const lastQrScanRef = useRef<{ text: string; time: number }>({ text: '', time: 0 });
+  const processQrDataRef = useRef<(data: string) => void>(() => {});
+
+  // Pembina Card Profile (synced from Firestore settings/pembina_card & localStorage)
+  const [pembinaProfile, setPembinaProfile] = useState<PembinaCardProfile>(() => {
+    const fallbackName = admin.name || 'Dwi Ambal Aziz, S.Kom';
+    const fallbackNip = admin.nip || '19920514 201903 1 008';
+    const defaults: PembinaCardProfile = {
+      id: 'pembina_card',
+      name: fallbackName,
+      nip: fallbackNip,
+      roleTitle: 'Pembina Lab & IT Club',
+      unit: 'SMP Lab Komputer Terpadu',
+      rfidUid: 'PMB-9901-01',
+      qrCodeData: `ITCLUB:PEMBINA:${fallbackNip}:${fallbackName}`,
+      avatarUrl:
+        admin.avatar ||
+        'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&auto=format&fit=crop&q=80',
+      email: admin.email || 'dwiambalaziz@gmail.com',
+      phone: '085731731051',
+    };
+    try {
+      const saved = localStorage.getItem('itclub_pembina_card');
+      if (saved) {
+        return { ...defaults, ...JSON.parse(saved) };
+      }
+    } catch {}
+    return defaults;
+  });
+
+  const normalizeCode = (value?: string): string =>
+    (value || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+
+  const sameCardCode = (a: string, b: string): boolean => {
+    if (!a || !b) return false;
+    if (a === b) return true;
+    if (/^\d+$/.test(a) && /^\d+$/.test(b)) {
+      const stripA = a.replace(/^0+/, '');
+      const stripB = b.replace(/^0+/, '');
+      if (stripA.length >= 6 && stripA === stripB) return true;
+    }
+    return false;
+  };
+
+  const buildPembinaVirtualStudent = (p: PembinaCardProfile): Student => ({
+    id: 'pembina_card',
+    nisn: p.nip,
+    name: p.name,
+    class: p.roleTitle || 'Pembina Lab & IT Club',
+    division: 'Robotika & IoT',
+    rfidUid: p.rfidUid || 'PMB-9901-01',
+    qrCodeData: p.qrCodeData || `ITCLUB:PEMBINA:${p.nip}:${p.name}`,
+    avatarUrl: p.avatarUrl,
+    email: p.email,
+    phone: p.phone,
+    joinedDate: '',
+    status: 'Pengurus',
+    position: p.roleTitle || 'Pembina Lab & IT Club',
+  });
+
+  const matchesPembinaCode = (rawInput: string): boolean => {
+    const trimmed = rawInput.trim();
+    const normInput = normalizeCode(trimmed);
+    if (!normInput) return false;
+    const normRfid = normalizeCode(pembinaProfile.rfidUid);
+    const normNip = normalizeCode(pembinaProfile.nip);
+    const normQr = normalizeCode(
+      pembinaProfile.qrCodeData || `ITCLUB:PEMBINA:${pembinaProfile.nip}:${pembinaProfile.name}`
+    );
+
+    if (sameCardCode(normRfid, normInput)) return true;
+    if (sameCardCode(normNip, normInput)) return true;
+    if (normQr && normQr === normInput) return true;
+    if (trimmed.toUpperCase().startsWith('ITCLUB:PEMBINA:')) return true;
+    return false;
+  };
 
   // WhatsApp Automated Notification State
   const [waConfig, setWaConfig] = useState<WhatsAppGatewayConfig>(() => getWhatsAppConfig());
@@ -191,6 +281,41 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
       .catch((err) => console.warn('[Firestore] getWhatsAppConfigFromFirestore error:', err));
 
     return () => unsubscribe();
+  }, []);
+
+  // Sync Pembina Card Profile from Cloud Firestore in real time
+  useEffect(() => {
+    let active = true;
+    getPembinaCardFromFirestore()
+      .then((remote) => {
+        if (active && remote) {
+          setPembinaProfile((prev) => {
+            const merged = { ...prev, ...remote };
+            try {
+              localStorage.setItem('itclub_pembina_card', JSON.stringify(merged));
+            } catch {}
+            return merged;
+          });
+        }
+      })
+      .catch(() => {});
+
+    const unsubPembina = subscribeToPembinaCard((remote) => {
+      if (active && remote) {
+        setPembinaProfile((prev) => {
+          const merged = { ...prev, ...remote };
+          try {
+            localStorage.setItem('itclub_pembina_card', JSON.stringify(merged));
+          } catch {}
+          return merged;
+        });
+      }
+    });
+
+    return () => {
+      active = false;
+      unsubPembina();
+    };
   }, []);
 
   const toggleAutoOpenWa = async () => {
@@ -357,6 +482,7 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       const isInput = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA');
+      if (isInput) return;
 
       const currentTime = Date.now();
       if (currentTime - lastKeyTime > 250) {
@@ -376,18 +502,58 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [students, attendanceRecords, tapMode, simulatedTime]);
+  }, [students, pembinaProfile, attendanceRecords, tapMode, simulatedTime]);
 
-  // Handle Camera feed for QR Code
+  // Handle Camera feed & Live QR Code decoding (supports both Students & Pembina cards)
   useEffect(() => {
     let stream: MediaStream | null = null;
-    if (activeMode === 'qrcode' && isCameraActive) {
+    let rafId: number | null = null;
+    let stopped = false;
+
+    const scanFrame = () => {
+      if (stopped) return;
+      const video = videoRef.current;
+      if (video && video.readyState === video.HAVE_ENOUGH_DATA && video.videoWidth > 0) {
+        let canvas = qrCanvasRef.current;
+        if (!canvas) {
+          canvas = document.createElement('canvas');
+          qrCanvasRef.current = canvas;
+        }
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(imageData.data, imageData.width, imageData.height, {
+            inversionAttempts: 'attemptBoth',
+          });
+          if (code && code.data) {
+            const nowMs = Date.now();
+            const isDuplicateWithinCooldown =
+              lastQrScanRef.current.text === code.data && nowMs - lastQrScanRef.current.time < 3000;
+            if (!isDuplicateWithinCooldown) {
+              lastQrScanRef.current = { text: code.data, time: nowMs };
+              processQrDataRef.current(code.data);
+            }
+          }
+        }
+      }
+      rafId = window.requestAnimationFrame(scanFrame);
+    };
+
+    if ((activeMode === 'qrcode' || showKioskModal) && isCameraActive) {
       navigator.mediaDevices?.getUserMedia({ video: { facingMode: 'environment' } })
         .then((s) => {
+          if (stopped) {
+            s.getTracks().forEach((track) => track.stop());
+            return;
+          }
           stream = s;
           if (videoRef.current) {
             videoRef.current.srcObject = s;
           }
+          rafId = window.requestAnimationFrame(scanFrame);
         })
         .catch(() => {
           setScanMessage({
@@ -399,11 +565,15 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
     }
 
     return () => {
+      stopped = true;
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
       if (stream) {
         stream.getTracks().forEach((track) => track.stop());
       }
     };
-  }, [activeMode, isCameraActive]);
+  }, [activeMode, isCameraActive, showKioskModal]);
 
   // Helper to determine whether tap is Masuk or Pulang
   const resolveTapType = (studentId: string, forcedType?: 'Masuk' | 'Pulang', checkTime?: Date): 'Masuk' | 'Pulang' => {
@@ -459,16 +629,42 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
     }
   };
 
-  // Process RFID Tap
+  // Process RFID Tap (supports both Students & Pembina Card, with 5s anti-double-tap cooldown)
   const processRfidUid = (uid: string, forcedTapType?: 'Masuk' | 'Pulang') => {
-    const cleanUid = uid.trim().toUpperCase();
+    const trimmedUid = uid.trim();
+    const cleanUid = trimmedUid.toUpperCase();
+    const normalizedInput = normalizeCode(trimmedUid);
+
+    if (!normalizedInput) return;
+
+    // 5-second anti-double-tap guard (skipped only if teacher explicitly forces Masuk/Pulang button)
+    const nowMs = Date.now();
+    const cooldownKey = normalizedInput;
+    const prevTapMs = lastRfidTapMapRef.current.get(cooldownKey) || 0;
+    if (!forcedTapType && nowMs - prevTapMs < 5000) {
+      const waitSec = Math.max(1, Math.ceil((5000 - (nowMs - prevTapMs)) / 1000));
+      setScanMessage({
+        type: 'info',
+        text: `Kartu baru saja ditempelkan (anti-double tap aktif). Tunggu ${waitSec} detik sebelum tap ulang.`,
+      });
+      return;
+    }
+    lastRfidTapMapRef.current.set(cooldownKey, nowMs);
+
     const student = students.find(
-      (s) => s.rfidUid.toUpperCase() === cleanUid || s.nisn === cleanUid
+      (s) =>
+        sameCardCode(normalizeCode(s.rfidUid), normalizedInput) ||
+        sameCardCode(normalizeCode(s.nisn), normalizedInput)
     );
 
-    if (student) {
+    const isPembinaTap = !student && matchesPembinaCode(trimmedUid);
+
+    if (student || isPembinaTap) {
+      const targetStudent = isPembinaTap
+        ? buildPembinaVirtualStudent(pembinaProfile)
+        : (student as Student);
       const now = getEffectiveDate();
-      const tapType = resolveTapType(student.id, forcedTapType, now);
+      const tapType = resolveTapType(targetStudent.id, forcedTapType, now);
       const { status, notes, isLate } = evaluateAttendance(tapType, now);
 
       const timeFormatted = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
@@ -476,26 +672,27 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
       const newRecord: AttendanceRecord = {
         id: `att-${Date.now()}`,
         timestamp: now.toISOString(),
-        studentId: student.id,
-        studentName: student.name,
-        class: student.class,
-        nisn: student.nisn,
-        division: student.division,
+        studentId: targetStudent.id,
+        studentName: targetStudent.name,
+        class: targetStudent.class,
+        nisn: targetStudent.nisn,
+        division: isPembinaTap ? 'Pembina Lab' : targetStudent.division,
         method: 'RFID',
         status: status,
         tapType: tapType,
         sessionTitle: 'Sesi Praktikum Lab & IT Club',
-        notes: notes,
-        parentPhone: student.parentPhone || student.phone,
+        notes: isPembinaTap ? `${notes} · [Pembina Lab]` : notes,
+        parentPhone: isPembinaTap ? '' : targetStudent.parentPhone || targetStudent.phone,
         waSent: false,
+        isPembina: isPembinaTap,
       };
 
       onAddAttendance(newRecord);
-      setLastScannedStudent({ student, record: newRecord });
+      setLastScannedStudent({ student: targetStudent, record: newRecord });
 
-      // Otomatis kirim notifikasi WhatsApp ke wali murid jika mode auto aktif
-      if (waConfig.enabled && (student.parentPhone || student.phone)) {
-        sendAutomatedWhatsAppNotification(student, newRecord, waConfig).then((res) => {
+      // Otomatis kirim notifikasi WhatsApp ke wali murid (hanya untuk siswa)
+      if (!isPembinaTap && waConfig.enabled && (targetStudent.parentPhone || targetStudent.phone)) {
+        sendAutomatedWhatsAppNotification(targetStudent, newRecord, waConfig).then((res) => {
           if (res.success) {
             setWaSentMap((prev) => ({ ...prev, [newRecord.id]: true }));
             showWaToast({ text: res.message });
@@ -513,15 +710,19 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
         soundEffects.playTapMasuk();
         setScanMessage({
           type: isLate ? 'info' : 'success',
-          text: isLate
-            ? `⚠️ TAP MASUK (TERLAMBAT ${timeFormatted} WIB): "Selamat datang di IT Club, ${student.name}!" (${student.class}) · Batas toleransi 11:25`
-            : `🟢 TAP MASUK BERHASIL (${timeFormatted} WIB): "Selamat datang di IT Club, ${student.name}!" (${student.class}) · Tepat Waktu (Jadwal 11:15)`,
+          text: isPembinaTap
+            ? `⭐ TAP MASUK PEMBINA BERHASIL (${timeFormatted} WIB): Selamat datang, ${targetStudent.name} (${targetStudent.class})`
+            : isLate
+            ? `⚠️ TAP MASUK (TERLAMBAT ${timeFormatted} WIB): "Selamat datang di IT Club, ${targetStudent.name}!" (${targetStudent.class}) · Batas toleransi 11:25`
+            : `🟢 TAP MASUK BERHASIL (${timeFormatted} WIB): "Selamat datang di IT Club, ${targetStudent.name}!" (${targetStudent.class}) · Tepat Waktu (Jadwal 11:15)`,
         });
       } else {
         soundEffects.playTapPulang();
         setScanMessage({
           type: 'success',
-          text: `🔵 TAP PULANG BERHASIL (${timeFormatted} WIB): "Terima kasih, hati-hati di jalan ya ${student.name}!" (${student.class}) · Jadwal Pulang 13:40`,
+          text: isPembinaTap
+            ? `⭐ TAP PULANG PEMBINA BERHASIL (${timeFormatted} WIB): Terima kasih atas bimbingannya, ${targetStudent.name}!`
+            : `🔵 TAP PULANG BERHASIL (${timeFormatted} WIB): "Terima kasih, hati-hati di jalan ya ${targetStudent.name}!" (${targetStudent.class}) · Jadwal Pulang 13:40`,
         });
       }
 
@@ -535,15 +736,26 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
     }
   };
 
-  // Process QR Code Scan
+  // Process QR Code Scan (supports both Students & Pembina Card)
   const processQrData = (qrText: string, forcedTapType?: 'Masuk' | 'Pulang') => {
+    const trimmedQr = qrText.trim();
+    const normQr = normalizeCode(trimmedQr);
     const student = students.find(
-      (s) => s.qrCodeData === qrText || s.nisn === qrText || qrText.includes(s.nisn)
+      (s) =>
+        s.qrCodeData === trimmedQr ||
+        normalizeCode(s.qrCodeData) === normQr ||
+        normalizeCode(s.nisn) === normQr ||
+        (s.nisn && trimmedQr.includes(s.nisn))
     );
 
-    if (student) {
+    const isPembinaQr = !student && matchesPembinaCode(trimmedQr);
+
+    if (student || isPembinaQr) {
+      const targetStudent = isPembinaQr
+        ? buildPembinaVirtualStudent(pembinaProfile)
+        : (student as Student);
       const now = getEffectiveDate();
-      const tapType = resolveTapType(student.id, forcedTapType, now);
+      const tapType = resolveTapType(targetStudent.id, forcedTapType, now);
       const { status, notes, isLate } = evaluateAttendance(tapType, now);
 
       const timeFormatted = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
@@ -551,26 +763,27 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
       const newRecord: AttendanceRecord = {
         id: `att-${Date.now()}`,
         timestamp: now.toISOString(),
-        studentId: student.id,
-        studentName: student.name,
-        class: student.class,
-        nisn: student.nisn,
-        division: student.division,
+        studentId: targetStudent.id,
+        studentName: targetStudent.name,
+        class: targetStudent.class,
+        nisn: targetStudent.nisn,
+        division: isPembinaQr ? 'Pembina Lab' : targetStudent.division,
         method: 'QR Code',
         status: status,
         tapType: tapType,
         sessionTitle: 'Sesi Praktikum Lab & IT Club',
-        notes: notes,
-        parentPhone: student.parentPhone || student.phone,
+        notes: isPembinaQr ? `${notes} · [Pembina Lab]` : notes,
+        parentPhone: isPembinaQr ? '' : targetStudent.parentPhone || targetStudent.phone,
         waSent: false,
+        isPembina: isPembinaQr,
       };
 
       onAddAttendance(newRecord);
-      setLastScannedStudent({ student, record: newRecord });
+      setLastScannedStudent({ student: targetStudent, record: newRecord });
 
-      // Otomatis kirim notifikasi WhatsApp ke wali murid jika mode auto aktif
-      if (waConfig.enabled && (student.parentPhone || student.phone)) {
-        sendAutomatedWhatsAppNotification(student, newRecord, waConfig).then((res) => {
+      // Otomatis kirim notifikasi WhatsApp ke wali murid (hanya untuk siswa)
+      if (!isPembinaQr && waConfig.enabled && (targetStudent.parentPhone || targetStudent.phone)) {
+        sendAutomatedWhatsAppNotification(targetStudent, newRecord, waConfig).then((res) => {
           if (res.success) {
             setWaSentMap((prev) => ({ ...prev, [newRecord.id]: true }));
             showWaToast({ text: res.message });
@@ -588,25 +801,30 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
         soundEffects.playTapMasuk();
         setScanMessage({
           type: isLate ? 'info' : 'success',
-          text: isLate
-            ? `⚠️ SCAN QR MASUK (TERLAMBAT ${timeFormatted} WIB): "Selamat datang di IT Club, ${student.name}!" · Batas toleransi 11:25`
-            : `🟢 SCAN QR MASUK BERHASIL (${timeFormatted} WIB): "Selamat datang di IT Club, ${student.name}!" · Tepat Waktu`,
+          text: isPembinaQr
+            ? `⭐ SCAN QR MASUK PEMBINA BERHASIL (${timeFormatted} WIB): Selamat datang, ${targetStudent.name}!`
+            : isLate
+            ? `⚠️ SCAN QR MASUK (TERLAMBAT ${timeFormatted} WIB): "Selamat datang di IT Club, ${targetStudent.name}!" · Batas toleransi 11:25`
+            : `🟢 SCAN QR MASUK BERHASIL (${timeFormatted} WIB): "Selamat datang di IT Club, ${targetStudent.name}!" · Tepat Waktu`,
         });
       } else {
         soundEffects.playTapPulang();
         setScanMessage({
           type: 'success',
-          text: `🔵 SCAN QR PULANG BERHASIL (${timeFormatted} WIB): "Terima kasih, hati-hati di jalan ya ${student.name}!" · Jadwal Pulang 13:40`,
+          text: isPembinaQr
+            ? `⭐ SCAN QR PULANG PEMBINA BERHASIL (${timeFormatted} WIB): Terima kasih atas bimbingannya, ${targetStudent.name}!`
+            : `🔵 SCAN QR PULANG BERHASIL (${timeFormatted} WIB): "Terima kasih, hati-hati di jalan ya ${targetStudent.name}!" · Jadwal Pulang 13:40`,
         });
       }
     } else {
       soundEffects.playRfidError();
       setScanMessage({
         type: 'error',
-        text: 'Data QR Code tidak cocok dengan data siswa terdaftar!',
+        text: 'Data QR Code tidak cocok dengan data siswa maupun Pembina terdaftar!',
       });
     }
   };
+  processQrDataRef.current = processQrData;
 
   // Export Attendance to CSV
   const handleExportCsv = () => {
@@ -662,11 +880,26 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
     return matchQuery && matchStatus && matchDate;
   });
 
-  // Per-student attendance recap summary
-  const studentRecapList = students
-    .map((s) => {
+  // Per-person attendance recap summary (Pembina + Siswa)
+  const recapParticipants = [
+    {
+      student: buildPembinaVirtualStudent(pembinaProfile),
+      isPembina: true,
+      divisionLabel: 'Pembina Lab',
+    },
+    ...students.map((s) => ({
+      student: s,
+      isPembina: false,
+      divisionLabel: s.division,
+    })),
+  ];
+
+  const studentRecapList = recapParticipants
+    .map(({ student: s, isPembina, divisionLabel }) => {
       const logs = attendanceRecords.filter((r) => {
-        const belongs = r.studentId === s.id || r.nisn === s.nisn;
+        const belongs = isPembina
+          ? r.studentId === 'pembina_card' || r.isPembina === true || normalizeCode(r.nisn) === normalizeCode(s.nisn)
+          : r.studentId === s.id || r.nisn === s.nisn;
         if (!belongs) return false;
         if (!filterDate) return true;
         const d = new Date(r.timestamp);
@@ -680,6 +913,8 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
       const onTimePct = logs.length > 0 ? Math.round((hadir / logs.length) * 100) : 0;
       return {
         student: s,
+        isPembina,
+        divisionLabel,
         total: logs.length,
         masuk,
         pulang,
@@ -694,7 +929,8 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
       return (
         row.student.name.toLowerCase().includes(q) ||
         row.student.nisn.includes(searchQuery) ||
-        row.student.class.toLowerCase().includes(q)
+        row.student.class.toLowerCase().includes(q) ||
+        (row.isPembina && 'pembina'.includes(q))
       );
     });
 
@@ -813,6 +1049,28 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
             <span>REST API &amp; ESP32</span>
           </button>
 
+          {/* Mode Kiosk Layar Penuh */}
+          <button
+            type="button"
+            onClick={() => setShowKioskModal(true)}
+            className="flex items-center gap-2 px-3.5 py-2 text-xs font-bold rounded-xl bg-gradient-to-r from-cyan-500/20 to-teal-500/20 hover:from-cyan-500/30 hover:to-teal-500/30 border border-cyan-500/40 text-cyan-200 transition-all shadow-sm"
+            title="Buka Tampilan Kiosk Layar Penuh untuk Monitor / Tablet Pintu Lab"
+          >
+            <Maximize2 className="w-4 h-4 text-cyan-400" />
+            <span>Mode Kiosk Lab</span>
+          </button>
+
+          {/* Rekap Bulanan Resmi Sekolah (PDF / Excel) */}
+          <button
+            type="button"
+            onClick={() => setShowMonthlyReportModal(true)}
+            className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-xl bg-slate-900 hover:bg-slate-800 border border-teal-500/40 text-teal-300 hover:text-white transition-all shadow-sm"
+            title="Cetak Rekap Kehadiran Bulanan Matriks Tanggal 1-31 (Kop Sekolah & TTD Pembina)"
+          >
+            <FileText className="w-4 h-4 text-teal-400" />
+            <span>Rekap Bulanan (PDF)</span>
+          </button>
+
           <button
             onClick={handleExportCsv}
             className="flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl bg-slate-900 hover:bg-slate-800 border border-cyan-500/30 text-cyan-300 transition-all shadow-sm"
@@ -821,13 +1079,13 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
             <span>Ekspor CSV / Excel</span>
           </button>
 
-          {onResetAttendance && (
+          {onResetAttendance && admin.role === 'guru_admin' && (
             <button
               type="button"
               onClick={() => setShowResetModal(true)}
               disabled={attendanceRecords.length === 0}
               className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-xl bg-rose-950/60 hover:bg-rose-900/70 disabled:opacity-40 disabled:cursor-not-allowed border border-rose-500/40 text-rose-300 hover:text-white transition-all shadow-sm"
-              title="Hapus seluruh log absensi tersimpan tanpa menghapus data anggota & kartu"
+              title="Hapus seluruh log absensi tersimpan tanpa menghapus data anggota & kartu (Khusus Pembina Utama)"
             >
               <Trash2 className="w-4 h-4 text-rose-400" />
               <span>Reset Absensi</span>
@@ -1164,11 +1422,11 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
                   </button>
                 </form>
 
-                {/* Deck Kartu Siswa untuk Pengujian Cepat (Quick Tap Simulator) */}
+                {/* Deck Kartu Pembina & Siswa untuk Pengujian Cepat (Quick Tap Simulator) */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-semibold text-slate-300">
-                      Simulasi Tap Kartu Siswa:
+                      Simulasi Tap Kartu Pembina &amp; Siswa:
                     </span>
                     <span className="text-[11px] text-cyan-400 font-mono">
                       Klik Masuk atau Pulang
@@ -1176,6 +1434,56 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
                   </div>
 
                   <div className="space-y-2">
+                    {/* Kartu Khusus Pembina */}
+                    <div className="p-2.5 rounded-xl bg-amber-950/35 border border-amber-500/50 hover:border-amber-400 transition-all flex items-center justify-between gap-2">
+                      <div
+                        onClick={() => processRfidUid(pembinaProfile.rfidUid || pembinaProfile.nip)}
+                        className="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer"
+                      >
+                        <img
+                          src={pembinaProfile.avatarUrl}
+                          alt={pembinaProfile.name}
+                          className="w-9 h-9 rounded-lg object-cover border border-amber-400 shrink-0"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-bold text-amber-100 truncate hover:text-amber-300">
+                              {pembinaProfile.name}
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shrink-0">
+                              PEMBINA
+                            </span>
+                          </div>
+                          <div className="text-[10px] font-mono text-amber-200/80 truncate">
+                            UID: {pembinaProfile.rfidUid} · {pembinaProfile.roleTitle}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => processRfidUid(pembinaProfile.rfidUid || pembinaProfile.nip, 'Masuk')}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/50 text-emerald-300 text-[10px] font-bold flex items-center gap-1 transition-colors"
+                          title="Tap Masuk Pembina"
+                        >
+                          <LogIn className="w-3 h-3 text-emerald-400" />
+                          <span>Masuk</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => processRfidUid(pembinaProfile.rfidUid || pembinaProfile.nip, 'Pulang')}
+                          className="px-2.5 py-1 rounded-lg bg-blue-950/80 hover:bg-blue-900 border border-blue-500/50 text-blue-300 text-[10px] font-bold flex items-center gap-1 transition-colors"
+                          title="Tap Pulang Pembina"
+                        >
+                          <LogOut className="w-3 h-3 text-blue-400" />
+                          <span>Pulang</span>
+                        </button>
+                      </div>
+                    </div>
+
                     {students.slice(0, 4).map((s) => (
                       <div
                         key={s.id}
@@ -1266,15 +1574,54 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
                 </div>
 
                 <div className="flex items-center justify-between text-xs text-slate-400">
-                  <span>Arahkan kamera ke QR Code pada kartu fisik / smartphone siswa.</span>
+                  <span>Arahkan kamera ke QR Code pada Kartu Pembina atau kartu siswa (deteksi otomatis aktif).</span>
                 </div>
 
                 {/* Quick QR Simulator Buttons */}
                 <div>
                   <span className="text-xs font-semibold text-slate-300 block mb-2">
-                    Uji Scan QR Siswa (Masuk / Pulang):
+                    Uji Scan QR Pembina &amp; Siswa (Masuk / Pulang):
                   </span>
                   <div className="space-y-2">
+                    {/* Pembina QR Quick Tap */}
+                    <div className="p-2 rounded-xl bg-amber-950/35 border border-amber-500/50 flex items-center justify-between gap-2">
+                      <div className="text-xs text-amber-100 truncate flex items-center gap-1.5">
+                        <Award className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <span className="font-bold truncate">{pembinaProfile.name}</span>
+                        <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[9px] font-mono shrink-0">
+                          PEMBINA
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            processQrData(
+                              pembinaProfile.qrCodeData ||
+                                `ITCLUB:PEMBINA:${pembinaProfile.nip}:${pembinaProfile.name}`,
+                              'Masuk'
+                            )
+                          }
+                          className="px-2 py-0.5 rounded bg-emerald-950 border border-emerald-500/40 text-[10px] text-emerald-300 font-semibold hover:bg-emerald-900"
+                        >
+                          Masuk
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            processQrData(
+                              pembinaProfile.qrCodeData ||
+                                `ITCLUB:PEMBINA:${pembinaProfile.nip}:${pembinaProfile.name}`,
+                              'Pulang'
+                            )
+                          }
+                          className="px-2 py-0.5 rounded bg-blue-950 border border-blue-500/40 text-[10px] text-blue-300 font-semibold hover:bg-blue-900"
+                        >
+                          Pulang
+                        </button>
+                      </div>
+                    </div>
+
                     {students.slice(0, 4).map((s) => (
                       <div
                         key={s.id}
@@ -1312,9 +1659,40 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
             {activeMode === 'manual' && (
               <div className="space-y-4">
                 <p className="text-xs text-slate-400">
-                  Tandai kehadiran secara manual jika siswa tertinggal kartu RFID / baterai HP habis:
+                  Tandai kehadiran Pembina atau siswa secara manual jika kartu RFID tertinggal:
                 </p>
                 <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                  {/* Pembina Manual Entry */}
+                  <div className="p-2.5 rounded-xl bg-amber-950/35 border border-amber-500/50 flex items-center justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-bold text-amber-100 truncate">
+                          {pembinaProfile.name}
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shrink-0">
+                          PEMBINA
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-amber-200/80 font-mono truncate">
+                        NIP: {pembinaProfile.nip} · {pembinaProfile.roleTitle}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => processRfidUid(pembinaProfile.rfidUid || pembinaProfile.nip, 'Masuk')}
+                        className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-[10px] font-semibold"
+                      >
+                        Masuk
+                      </button>
+                      <button
+                        onClick={() => processRfidUid(pembinaProfile.rfidUid || pembinaProfile.nip, 'Pulang')}
+                        className="px-2.5 py-1 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/40 text-[10px] font-semibold"
+                      >
+                        Pulang
+                      </button>
+                    </div>
+                  </div>
+
                   {students.map((s) => (
                     <div
                       key={s.id}
@@ -1368,12 +1746,29 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
 
           </div>
 
-          {/* Last Scanned Student Identity Card Highlight */}
-          {lastScannedStudent && (
-            <div className="rounded-2xl bg-gradient-to-br from-[#0c162d] to-[#080d1a] border border-cyan-500/50 p-5 shadow-xl relative overflow-hidden animate-fadeIn">
+          {/* Last Scanned Student / Pembina Identity Card Highlight */}
+          {lastScannedStudent && (() => {
+            const isPembinaCard =
+              lastScannedStudent.record.isPembina || lastScannedStudent.student.id === 'pembina_card';
+            return (
+            <div
+              className={`rounded-2xl bg-gradient-to-br p-5 shadow-xl relative overflow-hidden animate-fadeIn border ${
+                isPembinaCard
+                  ? 'from-[#1b1408] to-[#080d1a] border-amber-500/60'
+                  : 'from-[#0c162d] to-[#080d1a] border-cyan-500/50'
+              }`}
+            >
               <div className="flex items-start justify-between mb-3">
-                <span className="px-2.5 py-1 rounded-full text-[11px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 flex items-center gap-1.5">
-                  <span>VERIFIKASI: {lastScannedStudent.record.method}</span>
+                <span
+                  className={`px-2.5 py-1 rounded-full text-[11px] font-mono font-bold border flex items-center gap-1.5 ${
+                    isPembinaCard
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
+                      : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                  }`}
+                >
+                  <span>
+                    {isPembinaCard ? 'PEMBINA LAB' : `VERIFIKASI: ${lastScannedStudent.record.method}`}
+                  </span>
                   <span className="text-slate-400">·</span>
                   <span className={lastScannedStudent.record.tapType === 'Pulang' ? 'text-blue-300' : 'text-emerald-300'}>
                     TAP {lastScannedStudent.record.tapType?.toUpperCase() || 'MASUK'}
@@ -1392,7 +1787,9 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
                 <img
                   src={lastScannedStudent.student.avatarUrl}
                   alt={lastScannedStudent.student.name}
-                  className="w-14 h-14 rounded-xl object-cover border-2 border-cyan-400 shadow-md"
+                  className={`w-14 h-14 rounded-xl object-cover border-2 shadow-md ${
+                    isPembinaCard ? 'border-amber-400' : 'border-cyan-400'
+                  }`}
                   referrerPolicy="no-referrer"
                 />
                 <div>
@@ -1400,9 +1797,9 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
                     {lastScannedStudent.student.name}
                   </h4>
                   <p className="text-xs text-slate-300 font-mono">
-                    NIS: {lastScannedStudent.student.nisn}
+                    {isPembinaCard ? 'NIP' : 'NIS'}: {lastScannedStudent.student.nisn}
                   </p>
-                  <p className="text-xs text-cyan-300">
+                  <p className={`text-xs ${isPembinaCard ? 'text-amber-300' : 'text-cyan-300'}`}>
                     {lastScannedStudent.student.class}
                   </p>
                   <p className="text-[11px] text-slate-400 font-mono mt-1">
@@ -1411,79 +1808,91 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
                 </div>
               </div>
 
-              {/* WhatsApp Parent Notification Box */}
-              <div className="mt-4 pt-3.5 border-t border-slate-800/80">
-                <div className="bg-emerald-950/40 border border-emerald-500/40 p-3.5 rounded-xl">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                    <div className="flex items-start gap-2.5 min-w-0">
-                      <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0 mt-0.5">
-                        <MessageSquare className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-xs font-bold text-emerald-300">
-                            Notifikasi WA Wali Murid
-                          </span>
-                          {waSentMap[lastScannedStudent.record.id] ? (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
-                              <CheckCheck className="w-3 h-3 text-emerald-400" /> Terkirim / Disiapkan
-                            </span>
-                          ) : (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                              Siap Dikirim
-                            </span>
-                          )}
+              {/* WhatsApp Parent Notification Box (Students) or Pembina Verified Box */}
+              {isPembinaCard ? (
+                <div className="mt-4 pt-3.5 border-t border-amber-500/25">
+                  <div className="bg-amber-950/40 border border-amber-500/40 p-3 rounded-xl flex items-center gap-2.5 text-xs text-amber-200">
+                    <Award className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>
+                      Presensi <strong>Kartu Khusus Pembina</strong> berhasil diverifikasi &amp; tercatat ke Cloud Firestore.
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-4 pt-3.5 border-t border-slate-800/80">
+                  <div className="bg-emerald-950/40 border border-emerald-500/40 p-3.5 rounded-xl">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0 mt-0.5">
+                          <MessageSquare className="w-4 h-4" />
                         </div>
-                        <p className="text-[11px] text-slate-300 mt-0.5 truncate">
-                          Wali: <strong className="text-white">{lastScannedStudent.student.parentName || 'Orang Tua / Wali'}</strong> · WA: <span className="font-mono text-emerald-400">{lastScannedStudent.student.parentPhone || lastScannedStudent.student.phone || '0812-3456-7890'}</span>
-                        </p>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-xs font-bold text-emerald-300">
+                              Notifikasi WA Wali Murid
+                            </span>
+                            {waSentMap[lastScannedStudent.record.id] ? (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                                <CheckCheck className="w-3 h-3 text-emerald-400" /> Terkirim / Disiapkan
+                              </span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                                Siap Dikirim
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-slate-300 mt-0.5 truncate">
+                            Wali: <strong className="text-white">{lastScannedStudent.student.parentName || 'Orang Tua / Wali'}</strong> · WA: <span className="font-mono text-emerald-400">{lastScannedStudent.student.parentPhone || lastScannedStudent.student.phone || '0812-3456-7890'}</span>
+                          </p>
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto flex-wrap">
-                      <button
-                        type="button"
-                        onClick={() => handleCopyWaMessage(lastScannedStudent.student, lastScannedStudent.record)}
-                        className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[11px] font-semibold text-slate-300 hover:text-white transition-colors flex items-center gap-1"
-                        title="Salin Teks Pesan WhatsApp"
-                      >
-                        {copiedWaId === lastScannedStudent.record.id ? (
-                          <>
-                            <Check className="w-3.5 h-3.5 text-emerald-400" />
-                            <span>Tersalin</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3.5 h-3.5 text-slate-400" />
-                            <span>Salin</span>
-                          </>
-                        )}
-                      </button>
+                      <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => handleCopyWaMessage(lastScannedStudent.student, lastScannedStudent.record)}
+                          className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[11px] font-semibold text-slate-300 hover:text-white transition-colors flex items-center gap-1"
+                          title="Salin Teks Pesan WhatsApp"
+                        >
+                          {copiedWaId === lastScannedStudent.record.id ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>Tersalin</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5 text-slate-400" />
+                              <span>Salin</span>
+                            </>
+                          )}
+                        </button>
 
-                      <button
-                        type="button"
-                        onClick={() => handleOpenWaModal(lastScannedStudent.student, lastScannedStudent.record)}
-                        className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-cyan-500/40 text-[11px] font-semibold text-cyan-300 hover:text-white transition-colors flex items-center gap-1"
-                        title="Pratinjau & Edit Pesan WA"
-                      >
-                        <Info className="w-3.5 h-3.5" />
-                        <span>Pratinjau</span>
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenWaModal(lastScannedStudent.student, lastScannedStudent.record)}
+                          className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-cyan-500/40 text-[11px] font-semibold text-cyan-300 hover:text-white transition-colors flex items-center gap-1"
+                          title="Pratinjau & Edit Pesan WA"
+                        >
+                          <Info className="w-3.5 h-3.5" />
+                          <span>Pratinjau</span>
+                        </button>
 
-                      <button
-                        type="button"
-                        onClick={() => handleSendWhatsApp(lastScannedStudent.student, lastScannedStudent.record)}
-                        className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold transition-all shadow-md shadow-emerald-950/40 flex items-center gap-1.5"
-                      >
-                        <Send className="w-3.5 h-3.5" />
-                        <span>Kirim WA</span>
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSendWhatsApp(lastScannedStudent.student, lastScannedStudent.record)}
+                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold transition-all shadow-md shadow-emerald-950/40 flex items-center gap-1.5"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          <span>Kirim WA</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
-          )}
+            );
+          })()}
 
         </div>
 
@@ -1587,6 +1996,18 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
                     >
                       Rekap Siswa
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setAttendanceView('analytics')}
+                      className={`px-2.5 py-1 rounded-lg font-semibold transition-colors flex items-center gap-1 ${
+                        attendanceView === 'analytics'
+                          ? 'bg-teal-500/20 text-teal-300'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <BarChart3 className="w-3.5 h-3.5" />
+                      <span>Grafik &amp; Statistik</span>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1640,7 +2061,14 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
               )}
             </div>
 
-            {attendanceView === 'recap' ? (
+            {attendanceView === 'analytics' ? (
+              <div className="p-4 sm:p-5">
+                <AnalyticsSection
+                  students={students}
+                  attendanceRecords={attendanceRecords}
+                />
+              </div>
+            ) : attendanceView === 'recap' ? (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-[#080c16] text-slate-400 font-mono uppercase tracking-wider border-b border-slate-800">
@@ -1655,14 +2083,28 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
                   </thead>
                   <tbody className="divide-y divide-slate-800/60">
                     {studentRecapList.map((row) => (
-                      <tr key={row.student.id} className="hover:bg-slate-900/50 transition-colors">
+                      <tr
+                        key={row.student.id}
+                        className={`transition-colors ${
+                          row.isPembina ? 'bg-amber-950/20 hover:bg-amber-950/35' : 'hover:bg-slate-900/50'
+                        }`}
+                      >
                         <td className="px-4 py-3">
-                          <div className="font-semibold text-white">{row.student.name}</div>
+                          <div className="font-semibold text-white flex items-center gap-1.5">
+                            <span>{row.student.name}</span>
+                            {row.isPembina && (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                PEMBINA
+                              </span>
+                            )}
+                          </div>
                           <div className="text-[10px] font-mono text-slate-400">
-                            {row.student.nisn} · {row.student.class}
+                            {row.isPembina ? `NIP: ${row.student.nisn}` : row.student.nisn} · {row.student.class}
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-cyan-300">{row.student.division}</td>
+                        <td className={`px-4 py-3 ${row.isPembina ? 'text-amber-300 font-semibold' : 'text-cyan-300'}`}>
+                          {row.divisionLabel}
+                        </td>
                         <td className="px-4 py-3 text-center font-mono tabular-nums text-emerald-300">
                           {row.masuk}
                         </td>
@@ -1713,8 +2155,15 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
                       </td>
                     </tr>
                   ) : (
-                    filteredRecords.map((item) => (
-                      <tr key={item.id} className="hover:bg-slate-900/50 transition-colors">
+                    filteredRecords.map((item) => {
+                      const isPembinaRow = item.isPembina || item.studentId === 'pembina_card';
+                      return (
+                      <tr
+                        key={item.id}
+                        className={`transition-colors ${
+                          isPembinaRow ? 'bg-amber-950/15 hover:bg-amber-950/30' : 'hover:bg-slate-900/50'
+                        }`}
+                      >
                         <td className="px-4 py-3 text-slate-300 font-mono tabular-nums whitespace-nowrap">
                           {new Date(item.timestamp).toLocaleTimeString('id-ID', {
                             hour: '2-digit',
@@ -1743,12 +2192,23 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
                           </span>
                         </td>
                         <td className="px-4 py-3 font-semibold text-white">
-                          <div>{item.studentName}</div>
-                          <div className="text-[10px] text-slate-500 font-mono">NIS: {item.nisn}</div>
+                          <div className="flex items-center gap-1.5">
+                            <span>{item.studentName}</span>
+                            {isPembinaRow && (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                PEMBINA
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-slate-500 font-mono">
+                            {isPembinaRow ? 'NIP' : 'NIS'}: {item.nisn}
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-slate-300">
                           <div>{item.class}</div>
-                          <div className="text-[10px] text-cyan-400">{item.division}</div>
+                          <div className={`text-[10px] ${isPembinaRow ? 'text-amber-300 font-semibold' : 'text-cyan-400'}`}>
+                            {item.division}
+                          </div>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-slate-900 text-slate-300 border border-slate-800">
@@ -1772,7 +2232,12 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
                           </span>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-right">
-                          {(() => {
+                          {isPembinaRow ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-mono font-semibold bg-amber-950/60 text-amber-300 border border-amber-500/40">
+                              <Award className="w-3 h-3 text-amber-400" />
+                              <span>Pembina Lab</span>
+                            </span>
+                          ) : (() => {
                             const student = students.find((s) => s.id === item.studentId || s.nisn === item.nisn);
                             const isSent = waSentMap[item.id] || item.waSent;
                             return (
@@ -1815,7 +2280,8 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
                           })()}
                         </td>
                       </tr>
-                    ))
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -1825,7 +2291,9 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
             {/* Table Footer */}
             <div className="p-3 bg-[#080d1a] border-t border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
               <span>
-                {attendanceView === 'recap'
+                {attendanceView === 'analytics'
+                  ? `Menampilkan analitik tren 14 hari & leaderboard dari ${students.length} siswa`
+                  : attendanceView === 'recap'
                   ? `Menampilkan rekap kehadiran ${studentRecapList.length} siswa`
                   : `Menampilkan ${filteredRecords.length} rekaman presensi${filterDate ? ` pada ${filterDate}` : ''}`}
               </span>
@@ -2281,12 +2749,31 @@ export const AbsensiSection: React.FC<AbsensiSectionProps> = ({
                   </button>
                 </div>
 
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setApiTestUid(pembinaProfile.rfidUid || pembinaProfile.nip)}
+                    className="px-2.5 py-1 rounded-lg bg-amber-950/60 hover:bg-amber-900/70 border border-amber-500/40 text-amber-300 font-mono text-[10px]"
+                  >
+                    Isi UID Pembina ({pembinaProfile.rfidUid})
+                  </button>
+                  {students[0] && (
+                    <button
+                      type="button"
+                      onClick={() => setApiTestUid(students[0].rfidUid)}
+                      className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-cyan-300 font-mono text-[10px]"
+                    >
+                      Isi UID Siswa ({students[0].rfidUid})
+                    </button>
+                  )}
+                </div>
+
                 <div className="flex gap-2">
                   <input
                     type="text"
                     value={apiTestUid}
                     onChange={(e) => setApiTestUid(e.target.value)}
-                    placeholder="Masukkan UID RFID siswa (cth: A4B2-7819-21)"
+                    placeholder="Masukkan UID RFID Pembina / siswa (cth: PMB-9901-01)"
                     className="flex-1 px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono focus:outline-none focus:border-violet-400"
                   />
                   <button
@@ -2490,6 +2977,29 @@ int httpCode = http.POST(payload);`}
           </div>
         </div>
       )}
+
+      {/* MODAL: MODE KIOSK LAYAR PENUH */}
+      <AbsensiKioskModal
+        isOpen={showKioskModal}
+        onClose={() => setShowKioskModal(false)}
+        lastScannedStudent={lastScannedStudent}
+        scanMessage={scanMessage}
+        isAudioMuted={isAudioMuted}
+        onToggleMute={handleToggleMute}
+        onManualRfidSubmit={(uid) => processRfidUid(uid)}
+        isCameraActive={isCameraActive}
+        onToggleCamera={() => setIsCameraActive((prev) => !prev)}
+        videoRef={videoRef}
+      />
+
+      {/* MODAL: REKAP BULANAN RESMI SEKOLAH (PDF / EXCEL) */}
+      <MonthlyReportModal
+        isOpen={showMonthlyReportModal}
+        onClose={() => setShowMonthlyReportModal(false)}
+        students={students}
+        attendanceRecords={attendanceRecords}
+        pembinaProfile={pembinaProfile}
+      />
 
     </section>
   );

@@ -83,6 +83,7 @@ export const DaftarAnggotaSection: React.FC<DaftarAnggotaSectionProps> = ({
     avatarUrl: '',
     rfidUid: '',
   });
+  const [photoError, setPhotoError] = useState<string | null>(null);
 
   // Division Options
   const divisions: (DivisionType | 'Semua')[] = [
@@ -347,9 +348,10 @@ export const DaftarAnggotaSection: React.FC<DaftarAnggotaSectionProps> = ({
   // Handle Photo Upload
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    setPhotoError(null);
     if (file) {
       if (file.size > 2 * 1024 * 1024) {
-        alert('Ukuran file maksimal 2MB');
+        setPhotoError('Ukuran file foto maksimal 2MB.');
         return;
       }
       const reader = new FileReader();
@@ -1131,6 +1133,12 @@ export const DaftarAnggotaSection: React.FC<DaftarAnggotaSectionProps> = ({
                     </label>
                     <span className="text-[11px] text-slate-500">Maksimal 2MB (JPG/PNG)</span>
                   </div>
+                  {photoError && (
+                    <p className="text-[11px] text-rose-400 flex items-center gap-1 mt-1">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>{photoError}</span>
+                    </p>
+                  )}
                 </div>
               </div>
 

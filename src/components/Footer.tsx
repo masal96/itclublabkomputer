@@ -5,12 +5,16 @@ interface FooterProps {
   setActiveTab: (tab: string) => void;
   onOpenAdminModal: () => void;
   onOpenJoinModal: () => void;
+  coachEmail?: string;
+  coachPhone?: string;
 }
 
 export const Footer: React.FC<FooterProps> = ({
   setActiveTab,
   onOpenAdminModal,
   onOpenJoinModal,
+  coachEmail,
+  coachPhone,
 }) => {
   return (
     <footer className="border-t border-cyan-900/40 bg-[#060911] text-slate-400 text-xs">
@@ -134,7 +138,7 @@ export const Footer: React.FC<FooterProps> = ({
                   className="hover:text-violet-300 transition-colors text-violet-400 flex items-center gap-1.5"
                 >
                   <ShieldCheck className="w-3.5 h-3.5" />
-                  <span>Portal Login Guru</span>
+                  <span>Portal Admin &amp; Pengurus</span>
                 </button>
               </li>
               <li>
@@ -160,11 +164,11 @@ export const Footer: React.FC<FooterProps> = ({
               </div>
               <div className="flex items-center gap-2">
                 <Mail className="w-3.5 h-3.5 text-teal-400 shrink-0" />
-                <span>itclub@labkomputer.sch.id</span>
+                <span>{coachEmail || 'dwiambalaziz@gmail.com'}</span>
               </div>
               <div className="flex items-center gap-2 font-mono">
                 <Phone className="w-3.5 h-3.5 text-violet-400 shrink-0" />
-                <span>(+62) 0857 3173 1051 / ext. 204</span>
+                <span>{coachPhone || '0857-3173-1051'}</span>
               </div>
             </div>
           </div>

@@ -1,50 +1,223 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Students collection (Lab members)
+
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Reusable validation primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isPrimaryPembina() {
+      return isSignedIn() && request.auth.token.email == 'dwiambalaziz@gmail.com';
+    }
+
+    function isValidStudent(d) {
+      return d.id is string && d.id.size() <= 128
+        && d.name is string && d.name.size() >= 1 && d.name.size() <= 160
+        && d.nisn is string && d.nisn.size() <= 60
+        && d.class is string && d.class.size() <= 80
+        && d.division is string && d.division.size() <= 80
+        && d.rfidUid is string && d.rfidUid.size() <= 80
+        && d.qrCodeData is string && d.qrCodeData.size() <= 300
+        && d.status in ['Aktif', 'Alumni', 'Pengurus'];
+    }
+
+    function isValidAttendance(d) {
+      return d.id is string && d.id.size() <= 128
+        && d.timestamp is string && d.timestamp.size() <= 64
+        && d.studentId is string && d.studentId.size() <= 128
+        && d.studentName is string && d.studentName.size() <= 160
+        && d.method in ['RFID', 'QR Code', 'Manual']
+        && d.status in ['Hadir', 'Terlambat', 'Izin'];
+    }
+
+    function isValidSchedule(d) {
+      return d.id is string && d.id.size() <= 128
+        && d.title is string && d.title.size() >= 1 && d.title.size() <= 180
+        && d.day is string && d.day.size() <= 20
+        && d.startTime is string && d.startTime.size() <= 20
+        && d.endTime is string && d.endTime.size() <= 20;
+    }
+
+    function isValidPortfolio(d) {
+      return d.id is string && d.id.size() <= 128
+        && d.title is string && d.title.size() >= 1 && d.title.size() <= 180
+        && d.description is string && d.description.size() <= 2000
+        && d.studentAuthors is list && d.studentAuthors.size() <= 15;
+    }
+
+    function isValidActivity(d) {
+      return d.id is string && d.id.size() <= 128
+        && d.title is string && d.title.size() >= 1 && d.title.size() <= 180
+        && d.description is string && d.description.size() <= 2000
+        && d.status in ['Mendatang', 'Sedang Berlangsung', 'Selesai'];
+    }
+
+    function isValidAssessment(d) {
+      return d.id is string && d.id.size() <= 128
+        && d.studentId is string && d.studentId.size() <= 128
+        && d.studentName is string && d.studentName.size() <= 160
+        && d.nisn is string && d.nisn.size() <= 60
+        && d.finalScore is number && d.finalScore >= 0 && d.finalScore <= 100
+        && d.grade in ['A', 'B', 'C', 'D']
+        && d.published is bool;
+    }
+
+    function isValidActivityRegistration(d) {
+      return d.id is string && d.id.size() <= 128
+        && d.activityId is string && d.activityId.size() <= 128
+        && d.participantName is string && d.participantName.size() >= 1 && d.participantName.size() <= 120
+        && d.participantClass is string && d.participantClass.size() >= 1 && d.participantClass.size() <= 80
+        && d.participantWhatsapp is string && d.participantWhatsapp.size() >= 6 && d.participantWhatsapp.size() <= 30
+        && d.reason is string && d.reason.size() >= 1 && d.reason.size() <= 1000
+        && d.preferredChannel in ['whatsapp', 'email'];
+    }
+
+    function isValidLearningModule(d) {
+      return d.id is string && d.id.size() <= 128
+        && d.title is string && d.title.size() >= 1 && d.title.size() <= 180
+        && d.track is string && d.track.size() <= 80
+        && d.level in ['Dasar', 'Menengah', 'Lanjutan']
+        && d.description is string && d.description.size() <= 2000
+        && d.syllabus is list && d.syllabus.size() <= 30;
+    }
+
+    function isValidTaskSubmission(d) {
+      return d.id is string && d.id.size() <= 128
+        && d.moduleId is string && d.moduleId.size() <= 128
+        && d.studentName is string && d.studentName.size() >= 1 && d.studentName.size() <= 120
+        && d.nisn is string && d.nisn.size() >= 1 && d.nisn.size() <= 40
+        && d.projectUrl is string && d.projectUrl.size() >= 5 && d.projectUrl.size() <= 500
+        && d.status in ['Menunggu', 'Dinilai', 'Perlu Revisi'];
+    }
+
+    function isValidAnnouncement(d) {
+      return d.id is string && d.id.size() <= 128
+        && d.title is string && d.title.size() >= 1 && d.title.size() <= 160
+        && d.content is string && d.content.size() >= 1 && d.content.size() <= 800
+        && d.priority in ['Info', 'Penting', 'Lomba', 'Libur']
+        && d.active is bool;
+    }
+
+    function isValidStaffRole(d) {
+      return d.email is string && d.email.size() >= 5 && d.email.size() <= 160
+        && d.name is string && d.name.size() >= 1 && d.name.size() <= 120
+        && d.role in ['guru_admin', 'pengurus'];
+    }
+
+    // 1. Students collection (Lab members)
     match /students/{studentId} {
-      allow read, write: if true;
+      allow list: if true;
+      allow get: if isValidId(studentId);
+      allow create, update: if isValidId(studentId) && isValidStudent(incoming());
+      allow delete: if isValidId(studentId);
     }
 
-    // Attendance records (Check-in & Check-out logs)
+    // 2. Attendance records (Check-in & Check-out logs + ESP32 hardware tap)
     match /attendance/{recordId} {
-      allow read, write: if true;
+      allow list: if true;
+      allow get: if isValidId(recordId);
+      allow create, update: if isValidId(recordId) && isValidAttendance(incoming());
+      allow delete: if isValidId(recordId);
     }
 
-    // Schedules (Lab & Club Schedule - Public Read, Admin Write)
+    // 3. Schedules
     match /schedules/{scheduleId} {
-      allow read, write: if true;
+      allow list: if true;
+      allow get: if isValidId(scheduleId);
+      allow create, update: if isValidId(scheduleId) && isValidSchedule(incoming());
+      allow delete: if isValidId(scheduleId);
     }
 
-    // Portfolios (Showcase projects - Public Read, Admin Write)
+    // 4. Portfolios
     match /portfolios/{portfolioId} {
-      allow read, write: if true;
+      allow list: if true;
+      allow get: if isValidId(portfolioId);
+      allow create, update: if isValidId(portfolioId) && isValidPortfolio(incoming());
+      allow delete: if isValidId(portfolioId);
     }
 
-    // Activities & Events (Public Read, Admin Write)
+    // 5. Activities & Events
     match /activities/{activityId} {
-      allow read, write: if true;
+      allow list: if true;
+      allow get: if isValidId(activityId);
+      allow create, update: if isValidId(activityId) && isValidActivity(incoming());
+      allow delete: if isValidId(activityId);
     }
 
-    // Lab Settings & Schedules
+    // 6. Lab Settings (Pembina card, coach contact, WhatsApp gateway, metadata)
     match /settings/{settingId} {
-      allow read, write: if true;
+      allow list: if true;
+      allow get: if isValidId(settingId);
+      allow create, update: if isValidId(settingId);
+      allow delete: if isPrimaryPembina() && isValidId(settingId);
     }
 
-    // Student assessments & IT Club progress reports
+    // 7. Student assessments & E-Certificate verification
     match /assessments/{assessmentId} {
-      allow read, write: if true;
+      allow list: if true;
+      allow get: if isValidId(assessmentId);
+      allow create, update: if isValidId(assessmentId) && isValidAssessment(incoming());
+      allow delete: if isValidId(assessmentId);
     }
 
-    // Activity participant registrations (public submit, admin review)
+    // 8. Activity participant registrations
     match /activity_registrations/{registrationId} {
-      allow read, write: if true;
+      allow list: if true;
+      allow get: if isValidId(registrationId);
+      allow create, update: if isValidId(registrationId) && isValidActivityRegistration(incoming());
+      allow delete: if isValidId(registrationId);
     }
 
-    // Test connection document
+    // 9. Editable Learning Modules
+    match /learning_modules/{moduleId} {
+      allow list: if true;
+      allow get: if isValidId(moduleId);
+      allow create, update: if isValidId(moduleId) && isValidLearningModule(incoming());
+      allow delete: if isValidId(moduleId);
+    }
+
+    // 10. Student Task & Project Submissions
+    match /task_submissions/{submissionId} {
+      allow list: if true;
+      allow get: if isValidId(submissionId);
+      allow create, update: if isValidId(submissionId) && isValidTaskSubmission(incoming());
+      allow delete: if isValidId(submissionId);
+    }
+
+    // 11. Lab Announcement Banners
+    match /announcements/{announcementId} {
+      allow list: if true;
+      allow get: if isValidId(announcementId);
+      allow create, update: if isValidId(announcementId) && isValidAnnouncement(incoming());
+      allow delete: if isValidId(announcementId);
+    }
+
+    // 14. Multi-Role Staff Access (Pembina & Pengurus Google emails)
+    match /staff_roles/{emailKey} {
+      allow list: if true;
+      allow get: if isValidId(emailKey);
+      allow create, update: if isValidId(emailKey) && isValidStaffRole(incoming());
+      allow delete: if isValidId(emailKey);
+    }
+
+    // Connection test document
     match /test/{docId} {
-      allow read, write: if true;
+      allow read: if isValidId(docId);
+      allow write: if false;
     }
   }
 }

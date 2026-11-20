@@ -178,6 +178,76 @@
         "createdAt": { "type": "string" }
       },
       "required": ["id", "activityId", "activityTitle", "participantName", "participantClass", "participantWhatsapp", "reason", "preferredChannel", "createdAt"]
+    },
+    "LearningModule": {
+      "title": "LearningModule",
+      "description": "Editable IT Club learning modules with PDF/Video links and starter code",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string", "maxLength": 180 },
+        "track": { "type": "string" },
+        "level": { "type": "string", "enum": ["Dasar", "Menengah", "Lanjutan"] },
+        "duration": { "type": "string" },
+        "lessons": { "type": "number" },
+        "description": { "type": "string", "maxLength": 2000 },
+        "syllabus": { "type": "array" },
+        "starterCode": { "type": "string", "maxLength": 10000 },
+        "starterLanguage": { "type": "string" },
+        "pdfUrl": { "type": "string", "maxLength": 500 },
+        "videoUrl": { "type": "string", "maxLength": 500 },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "title", "track", "level", "duration", "lessons", "description", "syllabus"]
+    },
+    "TaskSubmission": {
+      "title": "TaskSubmission",
+      "description": "Student assignment and project link submissions for modules",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "moduleId": { "type": "string" },
+        "moduleTitle": { "type": "string" },
+        "studentName": { "type": "string", "maxLength": 120 },
+        "nisn": { "type": "string", "maxLength": 40 },
+        "studentClass": { "type": "string", "maxLength": 60 },
+        "division": { "type": "string" },
+        "projectUrl": { "type": "string", "maxLength": 500 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "status": { "type": "string", "enum": ["Menunggu", "Dinilai", "Perlu Revisi"] },
+        "feedback": { "type": "string", "maxLength": 1000 },
+        "score": { "type": "number" },
+        "submittedAt": { "type": "string" }
+      },
+      "required": ["id", "moduleId", "moduleTitle", "studentName", "nisn", "studentClass", "division", "projectUrl", "status", "submittedAt"]
+    },
+    "LabAnnouncement": {
+      "title": "LabAnnouncement",
+      "description": "Quick announcement banners displayed on the home page",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string", "maxLength": 160 },
+        "content": { "type": "string", "maxLength": 800 },
+        "priority": { "type": "string", "enum": ["Info", "Penting", "Lomba", "Libur"] },
+        "active": { "type": "boolean" },
+        "authorName": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "title", "content", "priority", "active", "authorName", "createdAt"]
+    },
+    "StaffRoleEntry": {
+      "title": "StaffRoleEntry",
+      "description": "Authorized Pembina & Pengurus Google emails for multi-role RBAC",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "name": { "type": "string", "maxLength": 120 },
+        "role": { "type": "string", "enum": ["guru_admin", "pengurus"] },
+        "addedBy": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["email", "name", "role", "addedBy", "createdAt"]
     }
   },
   "firestore": {
@@ -212,6 +282,22 @@
     "/activity_registrations/{registrationId}": {
       "schema": "ActivityRegistration",
       "description": "Collection of participant registrations for IT Club activities"
+    },
+    "/learning_modules/{moduleId}": {
+      "schema": "LearningModule",
+      "description": "Collection of editable IT Club learning modules"
+    },
+    "/task_submissions/{submissionId}": {
+      "schema": "TaskSubmission",
+      "description": "Collection of student task and project submissions"
+    },
+    "/announcements/{announcementId}": {
+      "schema": "LabAnnouncement",
+      "description": "Collection of lab announcement banners"
+    },
+    "/staff_roles/{emailKey}": {
+      "schema": "StaffRoleEntry",
+      "description": "Collection of authorized Pembina and Pengurus roles"
     }
   }
 }

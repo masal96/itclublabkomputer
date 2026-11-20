@@ -15,9 +15,22 @@ import {
   writeBatch,
   Firestore
 } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import config from '../../firebase-applet-config.json';
-import { Student, AttendanceRecord, ScheduleItem, PortfolioItem, ActivityEvent, StudentAssessment, PembinaCardProfile, ActivityRegistration } from '../types';
+import {
+  Student,
+  AttendanceRecord,
+  ScheduleItem,
+  PortfolioItem,
+  ActivityEvent,
+  StudentAssessment,
+  PembinaCardProfile,
+  ActivityRegistration,
+  LearningModule,
+  TaskSubmission,
+  LabAnnouncement,
+  StaffRoleEntry,
+} from '../types';
 import { WhatsAppGatewayConfig } from '../utils/whatsapp';
 import { 
   INITIAL_STUDENTS, 
@@ -25,7 +38,8 @@ import {
   INITIAL_SCHEDULE, 
   INITIAL_PORTFOLIO,
   INITIAL_ACTIVITIES,
-  INITIAL_ASSESSMENTS
+  INITIAL_ASSESSMENTS,
+  INITIAL_MODULES
 } from '../data/initialData';
 
 // Firebase Configuration with reliable fallbacks for external deployments (Vercel, Netlify)
@@ -48,6 +62,75 @@ export const db: Firestore = FIREBASE_CONFIG.firestoreDatabaseId && FIREBASE_CON
   : getFirestore(app);
 
 export const auth = getAuth(app);
+export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: 'select_account' });
+
+export const PRIMARY_PEMBINA_EMAIL = 'dwiambalaziz@gmail.com';
+
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
+
+export function handleFirestoreError(
+  error: unknown,
+  operationType: OperationType,
+  path: string | null
+): never {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo:
+        auth.currentUser?.providerData?.map((provider) => ({
+          providerId: provider.providerId,
+          email: provider.email,
+        })) || [],
+    },
+    operationType,
+    path,
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
+export async function signInWithGoogleFirebase() {
+  const result = await signInWithPopup(auth, googleProvider);
+  return result.user;
+}
+
+export async function signOutFirebase() {
+  try {
+    await signOut(auth);
+  } catch (err) {
+    console.warn('[Auth] Sign out note:', err);
+  }
+}
 
 // Connection state checker
 export async function validateFirestoreConnection(): Promise<boolean> {
@@ -668,6 +751,26 @@ export async function savePembinaCardToFirestore(profile: PembinaCardProfile): P
   }
 }
 
+export function subscribeToPembinaCard(
+  callback: (profile: PembinaCardProfile | null) => void
+): () => void {
+  try {
+    const docRef = doc(db, 'settings', 'pembina_card');
+    return onSnapshot(
+      docRef,
+      (snap) => {
+        if (snap.exists()) {
+          callback(snap.data() as PembinaCardProfile);
+        }
+      },
+      (error) => console.warn('[Firestore] Pembina card subscription error:', error)
+    );
+  } catch (err) {
+    console.warn('[Firestore] Pembina card subscription failed:', err);
+    return () => {};
+  }
+}
+
 // ==========================================
 // 9. ACTIVITY REGISTRATIONS & COACH CONTACT
 // ==========================================
@@ -780,6 +883,282 @@ export function subscribeToActivityRegistrations(
     );
   } catch (err) {
     console.warn('[Firestore] Activity registrations subscription failed:', err);
+    return () => {};
+  }
+}
+
+// ==========================================
+// 10. LEARNING MODULES & TASK SUBMISSIONS
+// ==========================================
+export async function getOrSeedLearningModules(): Promise<LearningModule[]> {
+  try {
+    const colRef = collection(db, 'learning_modules');
+    const snap = await getDocs(colRef);
+    if (!snap.empty) {
+      return snap.docs.map((d) => d.data() as LearningModule);
+    }
+    const seeded: LearningModule[] = [];
+    for (const m of INITIAL_MODULES) {
+      const payload = sanitizeForFirestore({
+        ...m,
+        pdfUrl: 'https://sfl.gl/eXMZXIfr',
+        updatedAt: new Date().toISOString(),
+      });
+      await setDoc(doc(db, 'learning_modules', m.id), payload);
+      seeded.push(payload as LearningModule);
+    }
+    return seeded;
+  } catch (err) {
+    console.warn('[Firestore] Error fetching learning modules, using fallback:', err);
+    return INITIAL_MODULES;
+  }
+}
+
+export async function saveLearningModuleToFirestore(mod: LearningModule): Promise<void> {
+  try {
+    const payload = sanitizeForFirestore({
+      ...mod,
+      title: mod.title.trim().slice(0, 180),
+      description: mod.description.trim().slice(0, 2000),
+      syllabus: (mod.syllabus || []).slice(0, 30),
+      updatedAt: new Date().toISOString(),
+    });
+    await setDoc(doc(db, 'learning_modules', mod.id), payload, { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, `learning_modules/${mod.id}`);
+  }
+}
+
+export async function deleteLearningModuleFromFirestore(id: string): Promise<void> {
+  try {
+    await deleteDoc(doc(db, 'learning_modules', id));
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `learning_modules/${id}`);
+  }
+}
+
+export function subscribeToLearningModules(callback: (list: LearningModule[]) => void): () => void {
+  try {
+    return onSnapshot(
+      collection(db, 'learning_modules'),
+      (snap) => {
+        if (!snap.empty) {
+          callback(snap.docs.map((d) => d.data() as LearningModule));
+        }
+      },
+      (err) => console.warn('[Firestore] Learning modules subscription error:', err)
+    );
+  } catch {
+    return () => {};
+  }
+}
+
+export async function saveTaskSubmissionToFirestore(sub: TaskSubmission): Promise<void> {
+  try {
+    const payload = sanitizeForFirestore({
+      ...sub,
+      studentName: sub.studentName.trim().slice(0, 120),
+      nisn: sub.nisn.trim().slice(0, 40),
+      studentClass: sub.studentClass.trim().slice(0, 60),
+      projectUrl: sub.projectUrl.trim().slice(0, 500),
+      notes: (sub.notes || '').trim().slice(0, 1000),
+      feedback: (sub.feedback || '').trim().slice(0, 1000),
+    });
+    await setDoc(doc(db, 'task_submissions', sub.id), payload, { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, `task_submissions/${sub.id}`);
+  }
+}
+
+export async function deleteTaskSubmissionFromFirestore(id: string): Promise<void> {
+  try {
+    await deleteDoc(doc(db, 'task_submissions', id));
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `task_submissions/${id}`);
+  }
+}
+
+export function subscribeToTaskSubmissions(callback: (list: TaskSubmission[]) => void): () => void {
+  try {
+    const q = query(collection(db, 'task_submissions'), orderBy('submittedAt', 'desc'), limit(200));
+    return onSnapshot(
+      q,
+      (snap) => {
+        callback(snap.docs.map((d) => d.data() as TaskSubmission));
+      },
+      (err) => console.warn('[Firestore] Task submissions subscription error:', err)
+    );
+  } catch {
+    return () => {};
+  }
+}
+
+// ==========================================
+// 11. LAB ANNOUNCEMENTS (PAPAN PENGUMUMAN)
+// ==========================================
+export const INITIAL_ANNOUNCEMENTS: LabAnnouncement[] = [
+  {
+    id: 'ann-welcome-2026',
+    title: 'Presensi RFID & Kartu Pembina Aktif · Wajib Bawa Kartu Anggota',
+    content:
+      'Seluruh anggota IT Club wajib melakukan Tap Masuk (11:15 WIB) dan Tap Pulang (13:40 WIB) menggunakan kartu RFID/QR masing-masing di terminal Lab Komputer.',
+    priority: 'Info',
+    active: true,
+    authorName: 'Pembina IT Club',
+    createdAt: '2026-02-01T08:00:00.000Z',
+  },
+];
+
+export async function getOrSeedAnnouncements(): Promise<LabAnnouncement[]> {
+  try {
+    const snap = await getDocs(collection(db, 'announcements'));
+    if (!snap.empty) {
+      return snap.docs
+        .map((d) => d.data() as LabAnnouncement)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    }
+    const metaRef = doc(db, 'settings', 'announcements_meta');
+    const metaSnap = await getDoc(metaRef);
+    if (metaSnap.exists()) return [];
+
+    for (const ann of INITIAL_ANNOUNCEMENTS) {
+      await setDoc(doc(db, 'announcements', ann.id), sanitizeForFirestore(ann));
+    }
+    await setDoc(metaRef, { seeded: true, seededAt: new Date().toISOString() }, { merge: true });
+    return INITIAL_ANNOUNCEMENTS;
+  } catch (err) {
+    console.warn('[Firestore] Error fetching announcements:', err);
+    return INITIAL_ANNOUNCEMENTS;
+  }
+}
+
+export async function saveAnnouncementToFirestore(ann: LabAnnouncement): Promise<void> {
+  try {
+    const payload = sanitizeForFirestore({
+      ...ann,
+      title: ann.title.trim().slice(0, 160),
+      content: ann.content.trim().slice(0, 800),
+    });
+    await setDoc(doc(db, 'announcements', ann.id), payload, { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, `announcements/${ann.id}`);
+  }
+}
+
+export async function deleteAnnouncementFromFirestore(id: string): Promise<void> {
+  try {
+    await deleteDoc(doc(db, 'announcements', id));
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `announcements/${id}`);
+  }
+}
+
+export function subscribeToAnnouncements(callback: (list: LabAnnouncement[]) => void): () => void {
+  try {
+    const q = query(collection(db, 'announcements'), orderBy('createdAt', 'desc'), limit(20));
+    return onSnapshot(
+      q,
+      (snap) => {
+        callback(snap.docs.map((d) => d.data() as LabAnnouncement));
+      },
+      (err) => console.warn('[Firestore] Announcements subscription error:', err)
+    );
+  } catch {
+    return () => {};
+  }
+}
+
+// ==========================================
+// 13. MULTI-ROLE STAFF ACCESS (PEMBINA & PENGURUS)
+// ==========================================
+export function emailToDocKey(email: string): string {
+  return email.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
+}
+
+export async function getStaffRoleByEmail(email: string): Promise<StaffRoleEntry | null> {
+  const cleanEmail = email.trim().toLowerCase();
+  if (!cleanEmail) return null;
+  if (cleanEmail === PRIMARY_PEMBINA_EMAIL) {
+    return {
+      email: cleanEmail,
+      name: 'Dwi Ambal Aziz, S.Kom., Gr.',
+      role: 'guru_admin',
+      addedBy: 'system',
+      createdAt: new Date().toISOString(),
+    };
+  }
+  try {
+    const key = emailToDocKey(cleanEmail);
+    const snap = await getDoc(doc(db, 'staff_roles', key));
+    if (snap.exists()) {
+      return snap.data() as StaffRoleEntry;
+    }
+  } catch (err) {
+    console.warn('[Firestore] Error checking staff role:', err);
+  }
+  return null;
+}
+
+export async function saveStaffRoleToFirestore(entry: StaffRoleEntry): Promise<void> {
+  const key = emailToDocKey(entry.email);
+  try {
+    await setDoc(
+      doc(db, 'staff_roles', key),
+      sanitizeForFirestore({
+        ...entry,
+        email: entry.email.trim().toLowerCase(),
+        name: entry.name.trim().slice(0, 120),
+      }),
+      { merge: true }
+    );
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, `staff_roles/${key}`);
+  }
+}
+
+export async function deleteStaffRoleFromFirestore(email: string): Promise<void> {
+  const key = emailToDocKey(email);
+  try {
+    await deleteDoc(doc(db, 'staff_roles', key));
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `staff_roles/${key}`);
+  }
+}
+
+export function subscribeToStaffRoles(callback: (list: StaffRoleEntry[]) => void): () => void {
+  try {
+    return onSnapshot(
+      collection(db, 'staff_roles'),
+      (snap) => {
+        callback(snap.docs.map((d) => d.data() as StaffRoleEntry));
+      },
+      (err) => console.warn('[Firestore] Staff roles subscription error:', err)
+    );
+  } catch {
+    return () => {};
+  }
+}
+
+export function subscribeToCoachContact(
+  callback: (config: CoachContactConfig | null) => void
+): () => void {
+  try {
+    return onSnapshot(
+      doc(db, 'settings', 'coach_contact'),
+      (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          callback({
+            coachName: data.coachName || 'Dwi Ambal Aziz, S.Kom',
+            coachWhatsapp: data.coachWhatsapp || '085731731051',
+            coachEmail: data.coachEmail || 'dwiambalaziz@gmail.com',
+            updatedAt: data.updatedAt,
+          });
+        }
+      },
+      (err) => console.warn('[Firestore] Coach contact subscription error:', err)
+    );
+  } catch {
     return () => {};
   }
 }

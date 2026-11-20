@@ -33,6 +33,7 @@ export const JoinClubModal: React.FC<JoinClubModalProps> = ({
   const [phone, setPhone] = useState('');
   const [motivation, setMotivation] = useState('');
   const [avatarUrl, setAvatarUrl] = useState<string>('https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=300&auto=format&fit=crop&q=80');
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
   const [registeredCard, setRegisteredCard] = useState<Student | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -42,8 +43,13 @@ export const JoinClubModal: React.FC<JoinClubModalProps> = ({
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setUploadError(null);
     if (!file.type.startsWith('image/')) {
-      alert('Pilih file gambar valid (JPG, PNG, WebP).');
+      setUploadError('Pilih file gambar valid (JPG, PNG, atau WebP).');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setUploadError('Ukuran foto maksimal 2MB agar cepat tersimpan.');
       return;
     }
     const reader = new FileReader();
@@ -177,6 +183,9 @@ export const JoinClubModal: React.FC<JoinClubModalProps> = ({
                       <Upload className="w-3 h-3" />
                       <span>Unggah Foto dari HP / Komputer</span>
                     </button>
+                    {uploadError && (
+                      <p className="mt-1.5 text-[11px] text-rose-300 font-medium">{uploadError}</p>
+                    )}
                     <p className="text-[10px] text-slate-400 mt-1">
                       Foto akan otomatis dicetak pada Kartu Identitas Resmi Siswa.
                     </p>
